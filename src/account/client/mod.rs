@@ -665,6 +665,7 @@ impl AuthenticatedClient {
     }
 
     /// This device's identity (its ID and key).
+    #[cfg(windows)]
     pub(crate) fn device_identity(&self) -> Option<crate::account::api::ClientIdentity> {
         self.api
             .lock()

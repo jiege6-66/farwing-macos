@@ -33,11 +33,6 @@ flate2 = "1.1.10"
 futures-util = "0.3.34"
 goog_cc = { path = "vendor/goog_cc" }
 hmac = "0.12.1"
-# Voice frame keys sealed to devices (`docs/protocol/chat-design.md` §10).
-hkdf = "0.12.4"
-x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
-# The voice "AI noise suppression" level (RNNoise port).
-nnnoiseless = { version = "0.5", default-features = false }
 hyper = { version = "1.11.1", default-features = false }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "bmp", "tiff", "gif", "webp"] }
 keyring = "4.1.6"
@@ -85,6 +80,11 @@ flate2 = "1.1.10"
 sha1 = "0.10.7"
 
 [target.'cfg(windows)'.dependencies]
+# Voice frame keys sealed to devices (`docs/protocol/chat-design.md` §10).
+hkdf = "0.12.4"
+x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
+# The voice "AI noise suppression" level (RNNoise port).
+nnnoiseless = { version = "0.5", default-features = false }
 farwing-bootstrap = { path = "crates/bootstrap" }
 # Required by the generated code of #[windows::core::implement].
 windows-core = "0.62.2"

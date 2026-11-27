@@ -34,6 +34,7 @@ pub(crate) struct Voice {
     /// How loud it plays (f32 bits; 1.0 as sent, 0: silent).
     gain: AtomicU32,
     /// The last decoded block's peak (f32 bits), before the gain.
+    #[cfg(windows)]
     peak: AtomicU32,
 }
 
@@ -44,14 +45,17 @@ impl Voice {
             generation: AtomicU64::new(1),
             ended: AtomicBool::new(false),
             gain: AtomicU32::new(1f32.to_bits()),
+            #[cfg(windows)]
             peak: AtomicU32::new(0),
         })
     }
     /// The last decoded 10 ms's peak (0–1).
+    #[cfg(windows)]
     pub(crate) fn peak(&self) -> f32 {
         f32::from_bits(self.peak.load(Ordering::Relaxed))
     }
     /// 0–2: silent to twice as loud; the stream keeps being decoded.
+    #[cfg(windows)]
     pub(crate) fn set_gain(&self, gain: f32) {
         self.gain.store(gain.clamp(0.0, 2.0).to_bits(), Ordering::Relaxed);
     }
@@ -176,7 +180,9 @@ impl Voices {
                 }
             }
             decoder.add_scaled(mix, &mut self.scratch, voice.gain())?;
+            #[cfg(windows)]
             let peak = self.scratch.iter().fold(0f32, |m, s| m.max(s.abs()));
+            #[cfg(windows)]
             voice.peak.store(peak.to_bits(), Ordering::Relaxed);
         }
         Ok(())

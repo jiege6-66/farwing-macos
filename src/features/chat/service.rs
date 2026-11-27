@@ -78,16 +78,23 @@ struct Inner {
     members_loading: Mutex<std::collections::HashSet<Id>>,
     counter: AtomicU64,
     /// The voice channel or call this device is in.
+    #[cfg(windows)]
     voice: Mutex<Option<voice_link::Active>>,
+    #[cfg(windows)]
     voice_settings: Mutex<crate::features::voice::settings::VoiceSettings>,
+    #[cfg(windows)]
     voice_keys: Mutex<Option<Arc<crate::features::voice::keys::DeviceKeys>>>,
     /// The channel being joined and its pushes until the session is up.
+    #[cfg(windows)]
     voice_joining: Mutex<Option<(Id, Vec<(String, Value)>)>>,
     /// Mute and deafen chosen last (they hold when joining).
+    #[cfg(windows)]
     voice_self: Mutex<(bool, bool)>,
     /// What the voice sounds last saw.
+    #[cfg(windows)]
     sounds: Mutex<voice_link::SoundState>,
     /// The microphone for the voice settings, outside a session.
+    #[cfg(windows)]
     preview: Mutex<Option<voice_link::Preview>>,
 }
 
@@ -123,12 +130,19 @@ impl ChatService {
             typing_sent: Mutex::new(HashMap::new()),
             members_loading: Mutex::new(std::collections::HashSet::new()),
             counter: AtomicU64::new(1),
+            #[cfg(windows)]
             voice: Mutex::new(None),
+            #[cfg(windows)]
             voice_settings: Mutex::new(crate::features::voice::settings::load()),
+            #[cfg(windows)]
             voice_keys: Mutex::new(None),
+            #[cfg(windows)]
             voice_joining: Mutex::new(None),
+            #[cfg(windows)]
             voice_self: Mutex::new((false, false)),
+            #[cfg(windows)]
             sounds: Mutex::new(Default::default()),
+            #[cfg(windows)]
             preview: Mutex::new(None),
         });
         runtime.spawn(run(Arc::clone(&inner), rx));
@@ -148,6 +162,7 @@ impl ChatService {
 
     pub(crate) fn stop(&self) {
         self.inner.stop.cancel();
+        #[cfg(windows)]
         if let Some(active) = lock(&self.inner.voice).take() {
             self.inner.runtime.spawn(async move { active.close(true).await });
         }
@@ -946,6 +961,7 @@ async fn connect(inner: &Arc<Inner>, outgoing: &mut mpsc::UnboundedReceiver<Enve
                             }
                             rt::PONG | rt::ACK | rt::ERROR => {}
                             kind => {
+                                #[cfg(windows)]
                                 if kind.starts_with("voice.") || kind.starts_with("call.") {
                                     voice_link::push(inner, kind, &env.data);
                                 }
@@ -989,7 +1005,8 @@ async fn load_member_pages(inner: &Arc<Inner>, group: Id) -> Option<Vec<farwing_
     }
 }
 
+#[cfg(windows)]
 #[path = "voice_link.rs"]
 mod voice_link;
-pub(crate) use voice_link::ShareTarget;
-pub(crate) use voice_link::MicTest;
+#[cfg(windows)]
+pub(crate) use voice_link::{MicTest, ShareTarget};

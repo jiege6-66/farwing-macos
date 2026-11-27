@@ -6,4 +6,6 @@ pub(crate) mod markdown;
 pub(crate) mod service;
 pub(crate) mod state;
 
-pub(crate) use service::{ChatService, ImageKey, MicTest, ShareTarget};
+pub(crate) use service::{ChatService, ImageKey};
+#[cfg(windows)]
+pub(crate) use service::{MicTest, ShareTarget};

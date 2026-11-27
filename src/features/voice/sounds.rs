@@ -4,6 +4,7 @@
 //! synthesized tones on the call output, each on a thread of its own; the
 //! same output plays the microphone test back.
 
+pub(crate) use super::settings::SoundGroup;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -27,21 +28,6 @@ pub(crate) enum Sound {
     LiveStarted,
     LiveEnded,
     /// Moved to another channel or disconnected by a moderator.
-    Removed,
-}
-
-/// The switches of the voice settings, one per kind of sound.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum SoundGroup {
-    Calls,
-    /// This device joining and leaving.
-    Presence,
-    /// Others joining and leaving.
-    People,
-    Mute,
-    Messages,
-    Live,
     Removed,
 }
 

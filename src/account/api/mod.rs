@@ -124,6 +124,7 @@ impl ClientIdentity {
     /// The device's X25519 secret for voice frame keys
     /// (`docs/protocol/chat-design.md` §10.1), derived from its Ed25519
     /// seed: kept where that is, nothing more to store.
+    #[cfg(windows)]
     pub(crate) fn x25519_secret(&self) -> [u8; 32] {
         let hk = hkdf::Hkdf::<sha2::Sha256>::new(Some(b"farwing-x25519"), &self.key.seed());
         let mut out = [0u8; 32];

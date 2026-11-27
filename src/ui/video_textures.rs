@@ -43,6 +43,7 @@ thread_local! {
 }
 
 /// The adapter decoders draw on (the main window's), once one has drawn.
+#[cfg(windows)]
 pub(crate) fn adapter() -> Option<u64> {
     Some(ADAPTER.load(Ordering::Relaxed)).filter(|a| *a != 0)
 }

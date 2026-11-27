@@ -1,8 +1,7 @@
-//! Voice settings of this Windows user (`docs/protocol/chat-design.md`
-//! §7.4): devices, processing, how speaking starts, each person's volume.
+//! Voice settings schema (`docs/protocol/chat-design.md` §7.4): devices,
+//! processing, how speaking starts, each person's volume.
 
-use super::capture::Noise;
-use super::sounds::SoundGroup;
+#[cfg(windows)]
 use anyhow::{Context, Result};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -23,6 +22,32 @@ pub(crate) struct Key {
     pub vk: u16,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Noise {
+    Off,
+    #[default]
+    Standard,
+    Ai,
+}
+
+/// The switches of the voice settings, one per kind of sound.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SoundGroup {
+    Calls,
+    /// This device joining and leaving.
+    Presence,
+    /// Others joining and leaving.
+    People,
+    Mute,
+    Messages,
+    Live,
+    Removed,
+}
+
+// Preserve the on-disk schema even where the voice runtime does not use it.
+#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub(crate) struct VoiceSettings {
@@ -83,12 +108,14 @@ impl Default for VoiceSettings {
     }
 }
 
+#[cfg(windows)]
 fn path() -> Result<std::path::PathBuf> {
     Ok(crate::product::local_data_dir()
         .context("LOCALAPPDATA unavailable")?
         .join("voice-settings.json"))
 }
 
+#[cfg(windows)]
 pub(crate) fn load() -> VoiceSettings {
     path()
         .ok()
@@ -96,6 +123,7 @@ pub(crate) fn load() -> VoiceSettings {
         .unwrap_or_default()
 }
 
+#[cfg(windows)]
 impl VoiceSettings {
     /// What `user` is played at (0–2).
     pub(crate) fn gain_of(&self, user: &str) -> f32 {
@@ -118,6 +146,7 @@ impl VoiceSettings {
     }
 }
 
+#[cfg(windows)]
 pub(crate) fn save(settings: &VoiceSettings) -> Result<()> {
     crate::storage::write(&path()?, settings)
 }

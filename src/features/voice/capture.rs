@@ -6,6 +6,7 @@
 //! the microphone comes as it is. The "AI" noise level runs RNNoise
 //! (nnnoiseless) on the result. Out come 10-ms mono blocks at 48 kHz.
 
+pub(crate) use super::settings::Noise;
 use anyhow::{Context, Result, anyhow, ensure};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_queue::ArrayQueue;
@@ -16,15 +17,6 @@ use std::time::{Duration, Instant};
 pub(crate) const RATE: u32 = 48_000;
 /// 10 ms at 48 kHz.
 pub(crate) const BLOCK: usize = 480;
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum Noise {
-    Off,
-    #[default]
-    Standard,
-    Ai,
-}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct CaptureConfig {

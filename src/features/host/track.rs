@@ -32,6 +32,7 @@ impl VideoTrack {
         }
     }
     /// A track named `id` (a voice channel's picture kind).
+    #[cfg(windows)]
     pub fn named(id: &str, preferred: Codec, negotiated: Arc<super::format::Negotiated>) -> Self {
         Self {
             id: id.to_owned(),

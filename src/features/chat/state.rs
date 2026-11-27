@@ -84,17 +84,23 @@ pub(crate) struct ChatState {
     /// A message to bring into view (a jump to a reply, pin or result).
     pub jump: Option<(Id, Id, Instant)>,
     /// This device in a voice channel or call.
+    #[cfg(windows)]
     pub my_voice: Option<MyVoice>,
     /// Control of someone's share this device asked for (or got).
+    #[cfg(windows)]
     pub control: Option<ControlAsked>,
     /// Requests to control this device's share, to be answered.
+    #[cfg(windows)]
     pub control_asks: Vec<farwing_protocol::chat::ControlRequest>,
     /// The control this device gave, until it ends.
+    #[cfg(windows)]
     pub control_given: Option<farwing_protocol::chat::ControlRequest>,
     /// A device to open a remote desktop session to (a share's control).
+    #[cfg(windows)]
     pub open_device: Option<String>,
 }
 
+#[cfg(windows)]
 impl ChatState {
     /// This device's voice is over, and any control of a share with it.
     pub(crate) fn end_voice(&mut self) {
@@ -106,6 +112,7 @@ impl ChatState {
 }
 
 /// Control of a share asked for by this device.
+#[cfg(windows)]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ControlAsked {
     pub id: String,
@@ -114,6 +121,7 @@ pub(crate) struct ControlAsked {
 }
 
 /// This device's voice: where, and how it goes.
+#[cfg(windows)]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct MyVoice {
     /// The voice channel, or the direct message of a call.
@@ -149,6 +157,7 @@ pub(crate) fn id_after(a: Option<Id>, b: Option<Id>) -> bool {
 
 impl ChatState {
     /// Do not disturb, or within its hours: nothing rings.
+    #[cfg(windows)]
     pub(crate) fn do_not_disturb(&self) -> bool {
         self.snap
             .as_ref()
@@ -353,6 +362,7 @@ impl ChatState {
         }
         match kind {
             types::MESSAGE => return self.add_message(body(data)?, window_hidden),
+            #[cfg(windows)]
             types::VOICE_STATE => {
                 let d: farwing_protocol::chat::VoiceChannelState = body(data)?;
                 if let Some(snap) = &mut self.snap {
@@ -362,6 +372,7 @@ impl ChatState {
                     }
                 }
             }
+            #[cfg(windows)]
             types::CALL_RING | types::CALL_OUTGOING | types::CALL_ANSWERED => {
                 let call: farwing_protocol::chat::Call = body(data)?;
                 // Do not disturb (or its hours): it rings unanswered.
@@ -378,6 +389,7 @@ impl ChatState {
                 }
                 return notice;
             }
+            #[cfg(windows)]
             types::CALL_ENDED => {
                 let d: farwing_protocol::chat::CallEnded = body(data)?;
                 if let Some(snap) = &mut self.snap {

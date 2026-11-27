@@ -1166,6 +1166,7 @@ mod ingress;
 mod forward;
 mod media;
 pub(crate) mod uplink;
+#[cfg(windows)]
 pub(crate) mod chat_video;
 pub(crate) mod screens;
 use channels::bind_channel;
