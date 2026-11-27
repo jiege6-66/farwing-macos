@@ -1928,3 +1928,15 @@ done
 | `macos-check.yml` | `macos-15` arm64，rustc 1.95.0 | `cargo check --locked --target aarch64-apple-darwin` 失败，`farwing`（lib）报 1286 个错误、1 个警告，首个错误为 `src/product.rs:16` 的 `windows` crate 不可用，与上节本机结果相同 |
 
 这次 Windows CI 取代了本机的构建和单元测试回归，但不包括 `docs/manual-test-checklist.md` 的条目；这一步只改了构建配置，没有动界面或运行时代码。推送 `feat/macos-controller-m0` 时没有产生 macOS 检查记录，原因未查。
+
+## macOS 主控：M1 §2.3 与 §1.3 之后的检查（2026-11-27）
+
+**结果：Windows 回归通过；本机 macOS 检查剩 1249 个错误，比上一节少 37 个，没有新增。** 测试提交为 `e0f3d21`，包含 §2.3 共享项迁移（`c06e615`、`af85117`）和 §1.3 命令取舍（`b8b26b1`、`b3a1c4d`、`a325869`），以及对应的文档提交。
+
+| 检查 | 结果 |
+|---|---|
+| 本机 `cargo check --locked --target aarch64-apple-darwin`（Rust 1.95.0） | §2.3 前后都是 1286 个错误，只是行号有移动，错误集合相同；§1.3 之后为 1249 个，减少的都出自新 gate 掉的代码（`application/mod.rs` 入口 13 个、`dev plugins` 的 D3D11 检查约 19 个、`dev_camera` 2 个等），没有新增错误或警告 |
+| fork CI `windows-check.yml`（`windows-2025`） | `cargo build --release --locked` 成功（21 分 28 秒），构建无 warning；`cargo fast-test --locked --lib` 284 项中 282 项通过、0 项失败、2 项 ignored |
+| fork CI `macos-check.yml` | 首次运行没有分到 arm64 hosted runner，排队后被取消，与代码无关；以本机结果为准 |
+
+`src/main.rs` 是 bin，在 Mac 上还到不了类型检查（库仍有阻断），§1.3 在 macOS 一侧的正确性目前只靠审查核对，Windows 一侧由上面的 CI 覆盖。`docs/manual-test-checklist.md` 的条目没有做；这两步只是移动代码和加 `#[cfg(windows)]`，Windows 上的行为没有变化。
