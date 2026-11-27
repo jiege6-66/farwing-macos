@@ -1852,3 +1852,23 @@ webrtc-rs 默认把每个收到的 UDP 包读进 1460 字节的缓冲区（`RECE
 ## 47. 仍需你来测
 
 本机能用命令行、网页端和模拟链路做的已在 §76 完成，结果填在 [manual-test-checklist.md](manual-test-checklist.md) 中。“结果”为空的项目要人操作界面（本机·界面）、会打断使用（本机·打断）或需要两台机器（双机）。
+
+## macOS 主控：M1 改动前的本机构建基线（2026-11-27）
+
+**结果：构建检查失败（Cargo 退出码 `101`）。** 基线 `707672b`，Apple Silicon，macOS 15.6，macOS SDK 15.5。Rust 1.95.0 安装在仓库外的隔离目录，未修改用户的 `PATH`。在仓库根目录用该工具链执行：
+
+```sh
+cargo +1.95.0 check --locked --target aarch64-apple-darwin
+cargo +1.95.0 tree --locked --target aarch64-apple-darwin -i farwing-vpl-sys
+cargo +1.95.0 tree --locked --target aarch64-apple-darwin -i farwing-amf-sys
+```
+
+本次 `check` 的首个报错来自 `farwing-vpl-sys` 的 build script：
+
+```text
+dispatcher/libvpl/src/windows/main.cpp:7:10: fatal error: 'windows.h' file not found
+```
+
+两条 `cargo tree` 均显示 `farwing` 直接依赖对应的 crate。根 `Cargo.toml` 将它们列在通用 `[dependencies]`，因此 macOS 也会构建 `vendor/vpl-sys/build.rs` 指定的 Windows dispatcher。`farwing-amf-sys` 已确认进入 Mac 依赖图，但不是这次报告的首个编译错误。
+
+下一次复测按[实现简报 §1.1](protocol/macos-controller-brief.md#11-cargo-依赖)检查：两项依赖应从 Mac 依赖图消失、在 Windows 依赖图保留，再重跑 `cargo check` 找下一处阻断。本条仅记录本地基线；未运行 GitHub CI 或 Windows 回归，也未生成可运行的 Mac 客户端。
