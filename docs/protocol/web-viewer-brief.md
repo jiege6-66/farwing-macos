@@ -723,7 +723,7 @@ message Permissions { repeated string grants = 1; }
    - 结果码（`docs/protocol/peer-messages.md` “CaptureSetting 结果码”）：0、-3、-6 视为成功，-1、-2 视为失败。
    - 多人观看（§4.11）时，画质、帧率、观影模式、光标都会被统一的观看流覆盖。
 4. **接收统计** `receiver_stats`（tag 7），每秒推送一次（`src/transport/rtc/channels.rs:403-409`）。**可选**。
-   - 被控连续 3 次判定“慢”（`decode_fps < receive_fps × 0.85`，或 `decode_delay_ms > 1.5 × 帧间隔`）时，会把帧率上限压到 `decode_fps` 向下取 5 的倍数（`src/features/host/parameters.rs:360-401`）。`receive_fps < 5` 时不处理。
+   - 被控连续 3 次判定“慢”（`decode_fps < receive_fps × 0.85`，或 `decode_delay_ms > 1.5 × 帧间隔`）时，会把帧率上限压到 `decode_fps` 向下取 5 的倍数（`src/features/host/parameters.rs:411-427`）。`receive_fps < 5` 时不处理。
    - 浏览器若发送，`decode_delay_ms` 只填纯解码耗时：`Δ totalDecodeTime / Δ framesDecoded × 1000`。**不要**填 `jitterBufferDelay`，否则会被当成解码跟不上。
 5. **不需要也不应发送**：`control_turn`（获取键鼠控制权）、`microphone_policy`、显示拓扑请求 11..14（需要 `display` 能力）。
 
@@ -757,7 +757,7 @@ message Permissions { repeated string grants = 1; }
 
 - `pointers = false`：按 `shape` 处理。`cursor_type == -1` 表示被控光标隐藏；否则 `byte_value` 为 PNG，尺寸 ≤ 2048，热点 `pos_x/pos_y`（`src/features/remote_cursor.rs:74-154`）。
 - `pointers = true`：`participants` 为其他参与者的指针（屏内归一化坐标）；`idle_ms` 超过 3 s 后淡出。
-- 由于 CURSOR 不带实时位置（§4.5），只看不控的观看端应在 `session.start` 中设 `cursor_capture: true`，让被控把光标合成进画面（`src/features/stream_control/publisher.rs:335`）。多人观看流总是合成光标（`src/features/host/shared_view.rs:98`）。
+- 由于 CURSOR 不带实时位置（§4.5），只看不控的观看端应在 `session.start` 中设 `cursor_capture: true`，让被控把光标合成进画面（`src/features/stream_control/publisher.rs:335`）。多人观看流总是合成光标（`src/features/host/shared_view.rs:106`）。
 
 ### 4.9 PARTICIPANTS（0x0902）与 POINTER（0x0106）
 
@@ -785,7 +785,7 @@ message Permissions { repeated string grants = 1; }
 - 浏览器从不发送 `ControlTurn`，因此永远不持有控制权。被控只注入持有者的键鼠（`src/features/host/participants.rs:337-371`）。
 - **被控照常推流**，不需要任何额外请求：
   - **只有浏览器一位参与者**：使用浏览器自己的参数（`session.start` 的 capture 与后续 CaptureSetting）。`shared_viewer` 在参与者 ≤ 1 人时为 false（`participants.rs:406-412`）。
-  - **两位及以上参与者、且浏览器不是持有者**：采集线程每轮自动把参数替换为“多人观看流”（`src/features/host/peer/capture_worker.rs:121-126`，`src/features/host/shared_view.rs:87-108`）：画质档 2（1080p 档）、60 fps、观影模式、合成光标、SDR、尺寸上限 3840×2160。格式取所有非持有者都能解码的最优 4:2:0 格式：AV1 10 bit > AV1 8 bit > HEVC 10 bit > HEVC 8 bit > H.264（`shared_view.rs:20-28`、`:52-66`、`:76-85`）。浏览器的设置在此期间不生效，只剩一人或持有者离开后恢复。
+  - **两位及以上参与者、且浏览器不是持有者**：采集线程每轮自动把参数替换为“多人观看流”（`src/features/host/peer/capture_worker.rs:121-126`，`src/features/host/shared_view.rs:92-115`）：画质档 2（1080p 档）、60 fps、观影模式、合成光标、SDR、尺寸上限 3840×2160。格式取所有非持有者都能解码的最优 4:2:0 格式：AV1 10 bit > AV1 8 bit > HEVC 10 bit > HEVC 8 bit > H.264（`shared_view.rs:25-32`、`:52-66`、`:76-85`）。浏览器的设置在此期间不生效，只剩一人或持有者离开后恢复。
 - 影响：浏览器只能解码 H.264 时，**所有**非持有者的共享流都会退到 H.264。能声明 AV1 时声明 AV1，可以让其他观看者保持更好的格式。
 
 ### 4.12 AUDIO（0x0202，session，JSON）

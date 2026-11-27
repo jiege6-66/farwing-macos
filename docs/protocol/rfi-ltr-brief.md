@@ -168,7 +168,7 @@
 
 ### 1.3 打包、FEC、RTX、发送节奏
 
-- **打包**：H.264 用 webrtc-rs 的 `H264Payloader`；HEVC 用 `src/features/host/hevc.rs`；AV1 用 `src/media/av1.rs`，关键帧置 N 位（`media.rs:318-328`）。
+- **打包**：H.264 用 webrtc-rs 的 `H264Payloader`；HEVC 用 `src/media/hevc.rs`；AV1 用 `src/media/av1.rs`，关键帧置 N 位（`media.rs:318-328`）。
 - **每帧头扩展**：`capture-index`、`new-frame`，以及按条件发送的 timing、color 等（`media.rs:373-423`）。
 - **RTX**：
   - 发送历史至少保留 `max(1 s, 3×RTT)`（`src/features/host/transport.rs:1235-1266`）；

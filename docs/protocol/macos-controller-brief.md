@@ -36,7 +36,7 @@
 2. **被控代码和主控缠在一起，不能整块去掉。**
    - 登录后的客户端对象带着被控句柄：`AuthenticatedClient.host: features::host::Handle`（`src/account/client/mod.rs:44`、`:111`、`:170`）；控制中心各处经它读写本机被控状态，`src/` 中约 100 处（`grep -E '(client|self|c)\.host\b'`，含少量误报）。
    - 登录和登出时迁移被控设置（`src/account/auth/mod.rs:27-72`）；GUI 启动时开启显示器回退（`src/application/app/mod.rs:55`）。
-   - 主控路径用到放在 `features::host` 里的共享类型（§2.3）。
+   - 主控路径用到放在 `features::host` 里的共享类型（§2.3；M1 已迁出，`wake_locally` 与 `chat_video` 除外）。
 3. **共用层带着 Windows 类型。**
    - 解码：`VideoDecoderConfig.gpu_device: Option<ID3D11Device>`（`src/media/decode_api/video.rs:31`）；`DecodedFrame.surface` 是 `D3D11Surface`（`src/media/decoder/mod.rs:27-31`）；`DecoderCandidate::WindowsD3d11`（`:66-67`）；`decoder_pool.rs:34` 持有 `D3D11SurfaceWriter`；软件解码槽用 named mutex（`decoder/software_slot.rs`）。
    - 观看窗口入口：session 层直接构造 `application::viewer::windows_presenter::ConnectingWindowsRunConfig`（`src/session/controller/viewing.rs:161-175`）。
