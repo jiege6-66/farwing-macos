@@ -461,5 +461,5 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 | 步 | 状态 |
 |---|---|
 | M0 | 包装脚本、测试和开发分支 CI 已配置；本机 Apple Development 签名、严格验签、标识符和证书核对通过。开发机已有 Xcode 命令行工具，Rust 1.95.0 装在仓库外的隔离目录；未实际运行 GitHub workflow，权限判别待验（§8.3）。 |
-| M1 | Mac 侧 §1.1–§1.2 构建层已完成：build script 通过，`cargo check` 仍停在 `farwing` 的 Rust 代码；Windows 构建与回归待验。其余 M1 工作尚未开始。 |
+| M1 | Mac 侧 §1.1–§1.2 构建层已完成：build script 通过，`cargo check` 仍停在 `farwing` 的 Rust 代码；Windows CI（`windows-2025`）上 `cargo build --release` 与 `cargo fast-test --lib` 通过（见 `docs/selftest-results.md`）。其余 M1 工作尚未开始。 |
 | M2–M9 | 未开始 |
