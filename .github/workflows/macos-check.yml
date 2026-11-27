@@ -3,7 +3,7 @@ name: macOS arm64 check
 on:
   push:
     branches:
-      - 'feat/macos-controller-m0'
+      - 'feat/macos-controller-*'
   workflow_dispatch:
 
 permissions:

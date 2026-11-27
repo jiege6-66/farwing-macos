@@ -1,0 +1,72 @@
+name: Windows x64 regression
+
+on:
+  push:
+    branches:
+      - 'feat/macos-controller-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: windows-2025
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install NASM
+        shell: pwsh
+        run: |
+          choco install nasm -y --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value (Join-Path $env:ProgramFiles 'NASM') -Encoding utf8
+
+      - name: Build release with Rust 1.95.0
+        shell: bash
+        run: |
+          log_dir="$(cygpath -u "$RUNNER_TEMP")"
+          set +e
+          (
+            set -e
+            rustup toolchain install 1.95.0 --profile minimal
+            nasm -v
+            cmake --version
+            rustc +1.95.0 --version --verbose
+            cargo +1.95.0 --version
+            cargo +1.95.0 build --release --locked
+          ) 2>&1 | tee "$log_dir/windows-build.log"
+          status=("${PIPESTATUS[@]}")
+          # Preserve the command failure; also fail if logging alone failed.
+          if (( status[0] != 0 )); then
+            exit "${status[0]}"
+          fi
+          exit "${status[1]}"
+
+      - name: Run library tests with Rust 1.95.0
+        shell: bash
+        run: |
+          log_dir="$(cygpath -u "$RUNNER_TEMP")"
+          set +e
+          (
+            set -e
+            cargo +1.95.0 fast-test --locked --lib
+          ) 2>&1 | tee "$log_dir/windows-test.log"
+          status=("${PIPESTATUS[@]}")
+          if (( status[0] != 0 )); then
+            exit "${status[0]}"
+          fi
+          exit "${status[1]}"
+
+      - name: Upload Windows regression logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-regression
+          path: |
+            ${{ runner.temp }}/windows-build.log
+            ${{ runner.temp }}/windows-test.log
+          if-no-files-found: warn

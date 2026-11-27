@@ -127,8 +127,10 @@
 
 ### 1.4 检查
 
-- Mac：`.github/workflows/macos-check.yml` 只在推送 `feat/macos-controller-m0` 时自动运行，可在工作流进入默认分支前取得基线；不监听 PR。进入默认分支后，也可在 GitHub Actions 的 **macOS arm64 check** 中选择 **Run workflow**。它在 arm64 runner 上用 Rust 1.95.0 执行 `cargo check --locked --target aarch64-apple-darwin`，保留失败退出码，失败时也尝试上传 `macos-arm64-check` 日志。阶段验收另做原生 `cargo build` 并运行。
-- Windows：`cargo build --release`、`cargo fast-test --lib`，以及对应阶段的 `docs/manual-test-checklist.md` 条目。
+两个工作流都在向开发者的 fork 推送 `feat/macos-controller-*` 分支时自动运行，不监听 PR；工作流文件进入默认分支后才能用 `workflow_dispatch` 手动运行。
+
+- Mac：`.github/workflows/macos-check.yml` 在 arm64 runner 上用 Rust 1.95.0 执行 `cargo check --locked --target aarch64-apple-darwin`，保留失败退出码，失败时也尝试上传 `macos-arm64-check` 日志。阶段验收另做原生 `cargo build` 并运行。
+- Windows：`.github/workflows/windows-check.yml` 在 `windows-2025` 上用 Rust 1.95.0 先执行 `cargo build --release --locked`，成功后执行 `cargo fast-test --locked --lib`，日志作为 `windows-x64-regression` artifact 上传。CI 替代本地 Windows 构建和单元测试回归；`docs/manual-test-checklist.md` 中对应阶段的条目仍需在 Windows 真机上验收。
 
 ## 2. 与被控代码解耦
 
