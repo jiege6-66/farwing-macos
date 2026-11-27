@@ -855,6 +855,7 @@ static DEV_CINEMA: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 
 /// `connect --dev-cinema`: start this viewer in (or out of) cinema mode
 /// whatever the saved device preference (measurements; not saved).
+#[cfg(windows)]
 pub(crate) fn set_dev_cinema(cinema: bool) {
     let _ = DEV_CINEMA.set(cinema);
 }
@@ -863,15 +864,18 @@ fn dev_cinema() -> Option<bool> {
     DEV_CINEMA.get().copied()
 }
 
+#[cfg(windows)]
 static DEV_VIRTUAL_SCREEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// `connect --dev-virtual-screen`: add one virtual screen to the host once
 /// the session can (tests; the same request as the confirmed menu action).
+#[cfg(windows)]
 pub(crate) fn set_dev_virtual_screen() {
     DEV_VIRTUAL_SCREEN.store(true, std::sync::atomic::Ordering::Release);
 }
 
 /// Whether the requested virtual screen is due now (`ready`); once.
+#[cfg(windows)]
 pub(crate) fn take_dev_virtual_screen(ready: bool) -> bool {
     ready && DEV_VIRTUAL_SCREEN.swap(false, std::sync::atomic::Ordering::AcqRel)
 }
@@ -883,6 +887,7 @@ static DEV_QUALITY: std::sync::OnceLock<StreamQuality> = std::sync::OnceLock::ne
 /// connection, the picture again at B seconds (once).
 static DEV_AUDIO_SWITCH: std::sync::Mutex<Option<(u64, u64)>> = std::sync::Mutex::new(None);
 
+#[cfg(windows)]
 pub(crate) fn set_dev_audio_switch(on: u64, off: u64) {
     *DEV_AUDIO_SWITCH.lock().unwrap_or_else(|p| p.into_inner()) = Some((on, off));
 }
@@ -891,6 +896,7 @@ pub(crate) fn take_dev_audio_switch() -> Option<(u64, u64)> {
     DEV_AUDIO_SWITCH.lock().unwrap_or_else(|p| p.into_inner()).take()
 }
 
+#[cfg(windows)]
 pub(crate) fn set_dev_quality(quality: StreamQuality) {
     let _ = DEV_QUALITY.set(quality);
 }

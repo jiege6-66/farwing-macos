@@ -3,7 +3,7 @@
 //! negotiate as usual, and recover a lost session by connecting again.
 use super::{
     ConnectionProgressReporter, ControllerConnection, RECOVERY_LIMIT, Recovery, cancellable,
-    recovery, recovery_backoff, report_progress, viewing, windows,
+    recovery, recovery_backoff, report_progress, viewing,
 };
 use crate::application::viewer::{ConnectionProgress, ViewerDisplayHandle, ViewerWindowEvent};
 use crate::i18n::t;
@@ -72,6 +72,7 @@ impl DirectRequest {
 const SETTINGS_OWNER: &str = "direct";
 
 /// Standalone viewer for a host reached directly (`connect --direct`).
+#[cfg(windows)]
 pub async fn run_direct_viewer_window(
     request: DirectRequest,
     options: ConnectionMediaOptions,
@@ -87,7 +88,7 @@ pub(super) async fn run_owner(
     sender: std::sync::mpsc::Sender<ViewerWindowEvent>,
     display: oneshot::Receiver<ViewerDisplayHandle>,
     monitor: watch::Sender<Option<crate::diagnostics::performance::PerformanceMonitor>>,
-    target: watch::Sender<Option<windows::ViewerTarget>>,
+    target: watch::Sender<Option<viewing::ViewerTarget>>,
     cancel: &CancellationToken,
     reporter: &mut ConnectionProgressReporter,
 ) -> Result<()> {
@@ -140,7 +141,7 @@ pub(super) async fn run_owner(
             }
         };
         alias = host.name.clone();
-        target.send_replace(Some(windows::ViewerTarget {
+        target.send_replace(Some(viewing::ViewerTarget {
             device_id: host.device_id.clone(),
             alias: alias.clone(),
         }));

@@ -29,6 +29,7 @@ pub(crate) enum Request {
         config: WindowConfig,
         factory: AppFactory,
     },
+    #[cfg(windows)]
     Viewer {
         key: String,
         config: crate::application::viewer::windows_presenter::ConnectingWindowsRunConfig,
@@ -52,6 +53,7 @@ pub(crate) fn send(request: Request) -> Result<()> {
         .send_event(Event::Request(request))
         .map_err(|_| anyhow::anyhow!(t().controls.window_manager_closed))
 }
+#[cfg(windows)]
 pub(crate) async fn viewer(
     key: String,
     config: crate::application::viewer::windows_presenter::ConnectingWindowsRunConfig,

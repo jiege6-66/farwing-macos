@@ -1,4 +1,5 @@
 //! Local GUI tasks; all HWNDs belong to the main window event loop.
+use super::viewing::ViewerTarget;
 use super::*;
 use std::sync::Mutex;
 use tokio::sync::watch;
@@ -12,11 +13,6 @@ pub(crate) struct ViewerInfo {
     pub remote_encoder: String,
     pub remote_capture: String,
     pub playing: bool,
-}
-#[derive(Clone)]
-pub(crate) struct ViewerTarget {
-    pub device_id: String,
-    pub alias: String,
 }
 pub(super) struct WindowContext {
     /// `None` for a host reached directly without an account.

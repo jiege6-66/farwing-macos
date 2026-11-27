@@ -239,11 +239,13 @@ fn set(names: &[&str]) -> BTreeMap<String, u32> {
     names.iter().map(|name| ((*name).to_owned(), 1)).collect()
 }
 
-/// Features implemented by the controller (viewer). `touch` and `pen`:
-/// it sends TOUCH / PEN frames to hosts that declare them.
+/// Features implemented by the controller (viewer). The Windows viewer
+/// sends TOUCH / PEN frames to hosts that declare them.
 pub(crate) fn controller_features() -> BTreeMap<String, u32> {
     let mut features = set(&[
+        #[cfg(windows)]
         feature::TOUCH,
+        #[cfg(windows)]
         feature::PEN,
         feature::DISPLAY_CONFIG,
         feature::DISPLAY_VIRTUAL,
@@ -384,6 +386,21 @@ mod tests {
     fn controller_advertises_clipboard_and_files() {
         let features = controller_features();
         for name in [feature::CLIPBOARD, feature::CLIPBOARD_FILES, feature::FILES] {
+            assert_eq!(features.get(name), Some(&1), "missing feature: {name}");
+        }
+    }
+
+    #[test]
+    fn controller_advertises_native_pointers_only_on_windows() {
+        let features = controller_features();
+        for name in [feature::TOUCH, feature::PEN] {
+            assert_eq!(features.contains_key(name), cfg!(windows), "{name}");
+        }
+        for name in [
+            feature::DISPLAY_CONFIG,
+            feature::DISPLAY_VIRTUAL,
+            feature::CURSOR_PARTICIPANTS,
+        ] {
             assert_eq!(features.get(name), Some(&1), "missing feature: {name}");
         }
     }

@@ -21,7 +21,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
-pub use direct::{DirectRequest, run_direct_viewer_window};
+pub use direct::DirectRequest;
+#[cfg(windows)]
+pub use direct::run_direct_viewer_window;
+#[cfg(windows)]
 pub use viewing::{run_assist_viewer_window, run_native_viewer_session, run_saved_viewer_window};
 pub(crate) use assist::target_label as assist_target_label;
 
@@ -43,6 +46,7 @@ mod assist;
 pub(crate) mod direct;
 mod record;
 mod shared;
+#[cfg(windows)]
 pub(crate) mod windows;
 
 fn report_progress(
@@ -179,6 +183,7 @@ fn room_released(error: &anyhow::Error) -> bool {
 }
 
 /// The same controller device took this session over in another window.
+#[cfg(windows)]
 fn room_replaced(error: &anyhow::Error) -> bool {
     matches!(
         error.downcast_ref::<SignalFailure>(),

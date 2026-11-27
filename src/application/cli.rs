@@ -714,6 +714,7 @@ pub async fn dev_files(
 /// device ID, with the same preflight as the device center. Works without
 /// an account: the host admits this device if it trusts it, or as a
 /// visitor with its access code or its user's confirmation.
+#[cfg(windows)]
 pub async fn assist(
     target: &str,
     code: Option<String>,
@@ -846,6 +847,7 @@ pub async fn dev_diagnostics(
 /// (`docs/protocol/rfi-ltr-brief.md` §6.10).
 /// `dev video --no-recovery`: keyframes only, for A/B runs.
 /// `connect --dev-loss`: the `dev video --loss` rules for a viewer window.
+#[cfg(windows)]
 pub fn dev_impair(spec: &str) -> Result<()> {
     use crate::transport::rtc::impair;
     impair::configure(impair::Config::parse(spec).context("--dev-loss 无效")?)?;
@@ -854,17 +856,20 @@ pub fn dev_impair(spec: &str) -> Result<()> {
 }
 
 /// `connect --dev-cinema`: start in or out of cinema mode (not saved).
+#[cfg(windows)]
 pub fn dev_cinema(cinema: bool) {
     crate::features::stream_control::set_dev_cinema(cinema);
 }
 
 /// `connect --dev-virtual-screen`: add a virtual screen once connected.
+#[cfg(windows)]
 pub fn dev_virtual_screen() {
     crate::features::stream_control::set_dev_virtual_screen();
 }
 
 /// `connect --dev-audio-only A,B`: audio only at A seconds, the picture
 /// again at B seconds.
+#[cfg(windows)]
 pub fn dev_audio_only(spec: &str) -> Result<()> {
     let (on, off) = spec.split_once(',').context("expected A,B")?;
     let (on, off): (u64, u64) = (on.trim().parse()?, off.trim().parse()?);
@@ -874,6 +879,7 @@ pub fn dev_audio_only(spec: &str) -> Result<()> {
 }
 
 /// `connect --dev-quality`: start at this tier (not saved).
+#[cfg(windows)]
 pub fn dev_quality(quality: &str) -> Result<()> {
     use crate::features::stream_control::StreamQuality;
     let quality = match quality {

@@ -10,6 +10,7 @@ pub(crate) mod dev_plugins;
 pub(crate) mod dev_video;
 pub mod bootstrap;
 pub mod viewer;
+#[cfg(windows)]
 pub(crate) mod viewer_shortcuts;
 pub(crate) mod wallpaper;
 #[cfg(windows)]

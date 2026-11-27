@@ -1363,17 +1363,20 @@ crate::ui::controls::observe_notice(ui.ctx(), "audio-output-disconnected", t().v
                         if changed {
                             state.local_error = handle.set_mouse_throttle(throttle, rate).err().map(|e|format!("{e:#}"));
                         }
-                        separator(ui);
-                        ui.add_space(7.0);
-                        ui.label(
-                            RichText::new((t().viewer.release_shortcut)(
-                                &crate::application::viewer_shortcuts::label(
-                                    crate::application::viewer_shortcuts::Action::ReleaseMouse,
-                                ),
-                            ))
-                            .size(crate::ui::theme::TINY)
-                            .color(MUTED),
-                        );
+                        #[cfg(windows)]
+                        {
+                            separator(ui);
+                            ui.add_space(7.0);
+                            ui.label(
+                                RichText::new((t().viewer.release_shortcut)(
+                                    &crate::application::viewer_shortcuts::label(
+                                        crate::application::viewer_shortcuts::Action::ReleaseMouse,
+                                    ),
+                                ))
+                                .size(crate::ui::theme::TINY)
+                                .color(MUTED),
+                            );
+                        }
                     }
                     Page::Custom => {
                         ui.add_enabled_ui(snapshot.ready, |ui| {

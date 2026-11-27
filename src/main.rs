@@ -15,6 +15,7 @@ use farwing::application::app;
 use farwing::diagnostics::logging;
 use farwing::media;
 use farwing::product;
+#[cfg(windows)]
 use farwing::session::controller;
 
 #[derive(Parser)]
@@ -203,6 +204,7 @@ enum Commands {
     },
     /// 以适合脚本处理的文本格式列出设备
     Devices,
+    #[cfg(windows)]
     /// 打开指定设备的观看窗口，关闭窗口或按 Ctrl+C 退出
     Connect {
         /// 设备的完整名称（必须唯一且完全匹配）
@@ -260,6 +262,7 @@ enum Commands {
         #[arg(long, hide = true)]
         dev_virtual_screen: bool,
     },
+    #[cfg(windows)]
     /// 经服务器连接一台设备（短号或设备 ID），打开观看窗口；无需登录
     Assist {
         /// 对方的 9 位短号或 16 位设备 ID
@@ -878,6 +881,7 @@ fn main() -> Result<()> {
                 farwing::application::cli::trusted_grant(&device_id, &grants)
             }
         },
+        #[cfg(windows)]
         Commands::Assist { target, code, mute } => {
             let mut options = media::preferences::load()?;
             options.muted = mute;
@@ -1073,6 +1077,7 @@ fn main() -> Result<()> {
         }
         Commands::Sessions { revoke } => tokio::runtime::Runtime::new()?
             .block_on(farwing::application::cli::auth_sessions(revoke)),
+        #[cfg(windows)]
         Commands::Connect {
             device,
             device_id,
@@ -1168,6 +1173,7 @@ fn attach_parent_console() {
     let _ = unsafe { AttachConsole(ATTACH_PARENT_PROCESS) };
 }
 
+#[cfg(windows)]
 async fn connect_device(
     device: Option<String>,
     options: media::ConnectionMediaOptions,

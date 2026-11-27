@@ -9,11 +9,14 @@ use crate::transport::rtc::{
 };
 use anyhow::{Context, Result, anyhow, bail};
 use decode_pipeline::{DecodeActivity, DecoderConfig, decoder_manager};
-pub(super) use hud::{PerformancePanelMode, show_performance_overlay};
+pub(super) use hud::PerformancePanelMode;
+#[cfg(windows)]
+pub(super) use hud::show_performance_overlay;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc as std_mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+#[cfg(windows)]
 use stream_menu::{StreamControlUi, show_stream_control_window};
 use tokio::sync::{mpsc, oneshot};
 
@@ -31,26 +34,33 @@ mod participants;
 mod polling_warning;
 pub(crate) mod room_notices;
 
+// The native macOS window and input backend arrive in M6.
+#[cfg(windows)]
 mod windows_cursor;
-
+#[cfg(windows)]
 mod windows_keyboard;
-
+#[cfg(windows)]
 mod windows_drag;
+#[cfg(windows)]
 mod windows_mouse;
-
+#[cfg(windows)]
 pub(crate) mod windows_presenter;
+#[cfg(windows)]
+mod windows_ui;
+
+#[cfg(windows)]
 pub(crate) struct DesktopInputHook {
     _hook: windows_keyboard::KeyboardHook,
 }
+#[cfg(windows)]
 pub(crate) fn desktop_input_message(message: *const std::ffi::c_void) -> bool {
     windows_keyboard::message(message) || windows_mouse::router().message(message)
 }
+#[cfg(windows)]
 pub(crate) fn desktop_input_hook() -> Result<DesktopInputHook> {
     windows_keyboard::remove_unused_raw_keyboard()?;
     windows_keyboard::KeyboardHook::install().map(|hook| DesktopInputHook { _hook: hook })
 }
-
-mod windows_ui;
 
 const CONNECTION_PROGRESS_STEPS: u8 = 13;
 
@@ -80,6 +90,7 @@ pub struct ConnectionProgress {
 pub(crate) struct RetryNow(std::sync::Arc<tokio::sync::Notify>);
 
 impl RetryNow {
+    #[cfg(windows)]
     pub(crate) fn trigger(&self) {
         self.0.notify_one();
     }
@@ -90,9 +101,11 @@ impl RetryNow {
 
 #[derive(Clone, Default)]
 pub(crate) struct ViewerDisplayHandle {
+    #[cfg(windows)]
     pub surface_writer: Option<crate::platform::surface::D3D11SurfaceWriter>,
     /// The video presenter's device on the writer's adapter, created while
     /// the connection is made (taken once).
+    #[cfg(windows)]
     pub renderer_device: PreparedRenderer,
     /// Wakes the window's event loop to take a queued window event now
     /// rather than at its next UI update.
@@ -101,16 +114,19 @@ pub(crate) struct ViewerDisplayHandle {
 
 pub(crate) type WindowWake = Arc<dyn Fn() + Send + Sync>;
 
+#[cfg(windows)]
 pub(crate) type PreparedRenderer = Arc<Mutex<Option<PreparedVideo>>>;
 
 /// The video presenter's device, and the swap chain of the hidden video
 /// window it will show in, made while the connection is established.
+#[cfg(windows)]
 pub(crate) struct PreparedVideo {
     pub device: windows::Win32::Graphics::Direct3D11::ID3D11Device,
     pub context: windows::Win32::Graphics::Direct3D11::ID3D11DeviceContext,
     pub swap_chain: Option<PreparedSwapChain>,
 }
 
+#[cfg(windows)]
 pub(crate) struct PreparedSwapChain {
     pub hwnd: isize,
     pub size: winit::dpi::PhysicalSize<u32>,
@@ -118,6 +134,7 @@ pub(crate) struct PreparedSwapChain {
 }
 // Made on the warm-up thread and handed over once to the render thread; DXGI
 // swap chains are free-threaded and this one is never used concurrently.
+#[cfg(windows)]
 unsafe impl Send for PreparedSwapChain {}
 
 impl ConnectionProgress {
@@ -157,6 +174,7 @@ impl ConnectionProgress {
     }
 
     /// The other side ended the session; `reason` says why.
+    #[cfg(windows)]
     pub(crate) fn ended(reason: impl Into<String>) -> Self {
         Self {
             title: t().viewer.connection_ended.to_owned(),
@@ -184,6 +202,7 @@ impl ConnectionProgress {
     }
 
     /// A failure.
+    #[cfg(windows)]
     pub(crate) fn from_error(error: &anyhow::Error) -> Self {
         Self::failed(format!("{error:#}"))
     }
@@ -198,10 +217,12 @@ impl ConnectionProgress {
     }
 }
 
+#[cfg(windows)]
 fn configure_viewer_visuals(ctx: &egui::Context) {
     crate::ui::theme::configure(ctx);
 }
 
+#[cfg(windows)]
 pub(crate) fn run_connecting_viewer_window(
     alias: String,
     progress: std_mpsc::Receiver<ConnectionProgress>,
@@ -232,6 +253,7 @@ pub(crate) enum ViewerWindowEvent {
     },
 }
 
+#[cfg(windows)]
 pub(super) struct ConnectionProgressApp {
     alias: String,
     receiver: std_mpsc::Receiver<ConnectionProgress>,
@@ -248,6 +270,7 @@ pub(super) struct ConnectionProgressApp {
     last_frame_texture: Option<egui::TextureHandle>,
 }
 
+#[cfg(windows)]
 impl ConnectionProgressApp {
     /// The device's name, once known.
     pub(super) fn set_alias(&mut self, alias: String) {
@@ -309,6 +332,7 @@ impl ConnectionProgressApp {
     }
 }
 
+#[cfg(windows)]
 mod connection_progress;
 
 #[derive(Debug)]
@@ -330,7 +354,9 @@ struct DecodedVideoFrame {
 const DECODER_INFLIGHT_LIMIT: usize = 100;
 
 mod present_queue;
-use present_queue::{PresentQueue, catch_up_override};
+use present_queue::PresentQueue;
+#[cfg(windows)]
+use present_queue::catch_up_override;
 
 // Presentation owns the pending decoded pictures (normally one; see
 // `present_queue`). Replacing a picture releases its display lease; the
@@ -338,6 +364,7 @@ use present_queue::{PresentQueue, catch_up_override};
 type FrameQueue = Arc<Mutex<PresentQueue>>;
 
 /// The presentation clock must not throttle decoding of reference pictures.
+#[cfg(windows)]
 fn take_next_frame(
     queue: &mut PresentQueue,
     performance: &PerformanceMonitor,
@@ -355,6 +382,7 @@ struct FrameWake {
 }
 
 impl FrameWake {
+    #[cfg(windows)]
     fn install_render_thread(&self, thread: std::thread::Thread) {
         *mutex_lock(&self.render_thread) = Some(thread);
         self.visible.store(true, Ordering::Release);
@@ -386,7 +414,9 @@ pub struct NativeViewerSession {
     decode_activity: Box<DecodeActivity>,
     /// The hardware decoder's surface writer: the video presenter can be
     /// built on its adapter while the first picture decodes.
+    #[cfg(windows)]
     presentation_writer: Option<crate::platform::surface::D3D11SurfaceWriter>,
+    #[cfg(windows)]
     presentation_device: PreparedRenderer,
     window_wake: Option<WindowWake>,
 }
@@ -448,10 +478,12 @@ impl NativeViewerSession {
         let software_decode = Arc::new(AtomicBool::new(!decoder.mode.hardware()));
         let decode_enabled = Arc::new(AtomicBool::new(true));
         let (decode_idle_sender, decode_idle) = tokio::sync::watch::channel(0);
+        #[cfg(windows)]
         let presentation_writer = display
             .surface_writer
             .clone()
             .filter(|_| decoder.mode.hardware());
+        #[cfg(windows)]
         let presentation_device = display.renderer_device.clone();
         let window_wake = display.wake.clone();
         let pause_epoch = Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -476,7 +508,10 @@ impl NativeViewerSession {
                     decode_idle: decode_idle_sender,
                     pause_epoch: manager_pause_epoch,
 
+                    #[cfg(windows)]
                     surface_writer: display.surface_writer,
+                    #[cfg(not(windows))]
+                    surface_writer: None,
                     observer: None,
                 },
                 video_source,
@@ -513,7 +548,9 @@ impl NativeViewerSession {
                 pause_epoch,
                 idle: decode_idle,
             }),
+            #[cfg(windows)]
             presentation_writer,
+            #[cfg(windows)]
             presentation_device,
             window_wake,
         };
@@ -635,6 +672,7 @@ impl NativeViewerSession {
         }
     }
 
+    #[cfg(windows)]
     pub(crate) fn take_screen_playback(&mut self) -> Option<screens::ScreenPlayback> {
         self.screens.take().map(|owner| *owner)
     }
@@ -653,6 +691,7 @@ impl NativeViewerSession {
         Ok(())
     }
 
+    #[cfg(windows)]
     pub fn run(self) -> Result<()> {
         windows_presenter::run(self)
     }

@@ -3,13 +3,16 @@ use super::connection::{ResolvedConnection, resolve_connection_with_client};
 use super::{
     ConnectionProgressReporter, ControllerConnection, RECOVERY_LIMIT, Recovery, assist,
     await_media_startup, cancellable, recovery_backoff, recovery_for, retry_session_failure,
-    room_released, room_replaced, windows,
+    room_released,
 };
+#[cfg(windows)]
+use super::{room_replaced, windows};
 use crate::account::client::AuthenticatedClient;
 use crate::application::viewer::{
-    ConnectionProgress, NativeViewerSession, ViewerDisplayHandle, ViewerWindowEvent,
-    run_connecting_viewer_window,
+    ConnectionProgress, ViewerDisplayHandle, ViewerWindowEvent,
 };
+#[cfg(windows)]
+use crate::application::viewer::{NativeViewerSession, run_connecting_viewer_window};
 use crate::i18n::t;
 use crate::media::ConnectionMediaOptions;
 use anyhow::{Context as _, Result, anyhow};
@@ -18,6 +21,7 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
+#[cfg(windows)]
 pub async fn run_saved_viewer_window(
     alias: String,
     options: ConnectionMediaOptions,
@@ -27,6 +31,7 @@ pub async fn run_saved_viewer_window(
 }
 
 /// Standalone viewer for a remote-assistance target (`assist` command).
+#[cfg(windows)]
 pub async fn run_assist_viewer_window(
     alias: String,
     options: ConnectionMediaOptions,
@@ -35,6 +40,7 @@ pub async fn run_assist_viewer_window(
     run_viewer_window(alias, options, None, Some(request), None).await
 }
 
+#[cfg(windows)]
 pub(super) async fn run_viewer_window(
     alias: String,
     options: ConnectionMediaOptions,
@@ -46,6 +52,7 @@ pub(super) async fn run_viewer_window(
 }
 
 /// [`run_viewer_window`], optionally for a host reached directly.
+#[cfg(windows)]
 pub(super) async fn run_viewer_window_with(
     alias: String,
     options: ConnectionMediaOptions,
@@ -187,6 +194,12 @@ pub(super) async fn run_viewer_window_with(
     window_result.and(connection_result)
 }
 
+#[derive(Clone)]
+pub(crate) struct ViewerTarget {
+    pub device_id: String,
+    pub alias: String,
+}
+
 pub(super) struct ViewerConnectionWindow {
     pub(super) client: Option<Arc<AuthenticatedClient>>,
     pub(super) sender: std::sync::mpsc::Sender<ViewerWindowEvent>,
@@ -194,7 +207,7 @@ pub(super) struct ViewerConnectionWindow {
     pub(super) owns_presence: bool,
     pub(super) monitor:
         tokio::sync::watch::Sender<Option<crate::diagnostics::performance::PerformanceMonitor>>,
-    pub(super) target: tokio::sync::watch::Sender<Option<windows::ViewerTarget>>,
+    pub(super) target: tokio::sync::watch::Sender<Option<ViewerTarget>>,
     pub(super) target_id: Option<String>,
     pub(super) assist: Option<crate::account::assist::AssistRequest>,
     pub(super) direct: Option<super::direct::DirectRequest>,
@@ -303,7 +316,7 @@ pub(super) async fn run_viewer_connection_owner(
         let mut recovering = None::<std::time::Instant>;
         loop {
             monitor.send_replace(None);
-            target.send_replace(Some(windows::ViewerTarget {
+            target.send_replace(Some(ViewerTarget {
                 device_id: resolved.target_device_id.clone(), alias: resolved.summary.alias.clone(),
             }));
             let update_attempt = resolved.refresh_after_upgrade;
@@ -741,6 +754,7 @@ pub(super) async fn present_video(
     Ok(close)
 }
 
+#[cfg(windows)]
 pub async fn run_native_viewer_session(
     connection: ControllerConnection,
     viewer: NativeViewerSession,
