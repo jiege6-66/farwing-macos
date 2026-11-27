@@ -1940,3 +1940,15 @@ done
 | fork CI `macos-check.yml` | 首次运行没有分到 arm64 hosted runner，排队后被取消，与代码无关；以本机结果为准 |
 
 `src/main.rs` 是 bin，在 Mac 上还到不了类型检查（库仍有阻断），§1.3 在 macOS 一侧的正确性目前只靠审查核对，Windows 一侧由上面的 CI 覆盖。`docs/manual-test-checklist.md` 的条目没有做；这两步只是移动代码和加 `#[cfg(windows)]`，Windows 上的行为没有变化。
+
+## macOS 主控：M1 首版范围外功能按平台编入之后的检查（2026-11-27）
+
+**结果：Windows 回归通过；macOS 检查剩 889 个错误，比上一节少 360 个。** 测试提交 `2978b5a`：剪贴板、文件传输、拖放、插件的运行时只在 Windows 编入；Windows 以外的主控 HELLO 不再声明 `clipboard`、`clipboard.files`、`files`，设备注册不再宣告 `files`。持久化与 IPC 用到的数据类型（`DevicePreferences`、`HostSettings`、被控访问 `Status` 及其中的剪贴板、文件、传输通知类型）在各平台照常编译、字段不变。
+
+| 检查 | 结果 |
+|---|---|
+| 本机 `cargo check --locked --target aarch64-apple-darwin`（Rust 1.95.0） | 1249 → 889 个错误，1 个既有 warning（`src/features/host/mod.rs:31` 未使用的 `HostSettings` 导入）。减少的集中在 `features/clipboard`（316）、`features/file_transfer`（27）、`features/host/clipboard`（18）、`src/plugins`（25）。新增 27 条，都在暂不改动的 Windows 专属文件（`ui/windows.rs`、`windows_presenter/**`、`windows_{mouse,keyboard,drag}.rs`、`session/controller/windows.rs`）、两个被控叠加层（`host/annotation/agent.rs`、`host/participants/overlay.rs`，留给被控拆分），以及调用 Windows 虚拟键名函数的 `viewer_shortcuts.rs`、`app/view/chat/dialogs.rs`（留给 §6.5，不写替身） |
+| fork CI `windows-check.yml`（`windows-2025`） | `cargo build --release --locked` 成功（16 分 12 秒），构建无 warning；`cargo fast-test --locked --lib` 285 项中 283 项通过、0 项失败、2 项 ignored，新增的 `protocol::peer::tests::controller_advertises_clipboard_and_files` 通过 |
+| fork CI `macos-check.yml`（`macos-15` arm64） | 失败，889 个错误、1 个 warning，与本机一致 |
+
+macOS 一侧另有 `controller_omits_clipboard_and_files_without_backends`，要等库能编译后才能运行。库在名字解析阶段就失败，类型检查和 lint 都还没走到；本次另做了静态核对：被 gate 掉的函数在 Mac 上没有残留的调用方，也不会留下未使用项。`docs/manual-test-checklist.md` 的条目没有做；这一步只加了 `#[cfg(windows)]`，Windows 上的行为不变。

@@ -186,7 +186,7 @@ M1 已将下列主控也用到的类型、常量和函数放在共用层；尚�
 ### 3.2 能力与特性
 
 - 设备注册能力（`local_capabilities`，`src/account/feature_ability.rs:36-49`）：由已编入的后端生成。Mac 首版为空集合。服务端对空集合按 `normalize_capabilities` 处理（`server/src/http/devices.rs:255`）【待测：空集合注册与刷新的行为】。
-- 主控 HELLO 特性（`controller_features`，`src/protocol/peer.rs:244-259`）：Mac 首版声明 `display.config`、`display.virtual`（请求 Windows 被控改分辨率、建虚拟屏，界面与协议逻辑共用）、`cursor.participants`；不声明 `touch`、`pen`、`clipboard`、`clipboard.files`、`files`；`video.recovery` 等 §5.4 的 V3 通过后再声明，在此之前走现有的 `disable_controller_recovery`（`src/protocol/peer.rs:265-267`）同样的“只用关键帧”路径。
+- 主控 HELLO 特性（`controller_features`，`src/protocol/peer.rs:244-259`）：Mac 首版声明 `display.config`、`display.virtual`（请求 Windows 被控改分辨率、建虚拟屏，界面与协议逻辑共用）、`cursor.participants`；不声明 `touch`、`pen`、`clipboard`、`clipboard.files`、`files`；`video.recovery` 等 §5.4 的 V3 通过后再声明，在此之前走现有的 `disable_controller_recovery`（`src/protocol/peer.rs:265-267`）同样的“只用关键帧”路径。M1 已随剪贴板、文件传输的运行时一起，在 Windows 以外去掉 `clipboard`、`clipboard.files`、`files` 的声明（被控 HELLO 同样处理），设备注册也不再宣告 `files`；`touch`、`pen` 与空能力集合仍待后续步骤。
 - 更新查询（`src/account/api/mod.rs:1046-1049`）在 Mac 上不编入。
 
 ### 3.3 本地数据与日志
@@ -463,5 +463,5 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 | 步 | 状态 |
 |---|---|
 | M0 | 包装脚本、测试和开发分支 CI 已配置；本机 Apple Development 签名、严格验签、标识符和证书核对通过。开发机已有 Xcode 命令行工具，Rust 1.95.0 装在仓库外的隔离目录；未实际运行 GitHub workflow，权限判别待验（§8.3）。 |
-| M1 | Mac 侧已完成 §1.1–§1.2 构建层、§2.3 共享项迁移及 §1.3 命令取舍；build script 通过，`cargo check` 仍停在 `farwing` 库的 Rust 代码。以上各项在 Windows CI（`windows-2025`）上的构建与库测试均已通过（见 `docs/selftest-results.md`）；其余 M1 工作尚未开始。 |
+| M1 | Mac 侧已完成 §1.1–§1.2 构建层、§2.3 共享项迁移及 §1.3 命令取舍；build script 通过，`cargo check` 仍停在 `farwing` 库的 Rust 代码。首版范围外的剪贴板、文件传输、拖放、插件已在 Windows 以外不编入（Mac 检查剩 889 个错误）。以上各项在 Windows CI（`windows-2025`）上的构建与库测试均已通过（见 `docs/selftest-results.md`）；§2.1–§2.2 被控运行时解耦、`platform/macos` 目录及其余阻断尚未开始。 |
 | M2–M9 | 未开始 |
