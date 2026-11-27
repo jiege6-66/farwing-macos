@@ -1,5 +1,5 @@
 fn main() {
-    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").expect("CARGO_CFG_TARGET_OS");
     let target_os = target_os.as_str();
     if target_os == "windows" {
         println!("cargo:rerun-if-changed=assets/windows.rc");
@@ -168,7 +168,7 @@ fn build_neteq(target_os: &str) {
             "macos" => {
                 build.define("WEBRTC_MAC", None).define("WEBRTC_POSIX", None);
             }
-            _ => {}
+            _ => unreachable!("NetEq is only built for Windows and macOS"),
         }
     }
     cpp.cpp(true)

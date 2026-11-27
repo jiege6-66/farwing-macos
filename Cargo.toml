@@ -89,12 +89,12 @@ farwing-bootstrap = { path = "crates/bootstrap" }
 # Required by the generated code of #[windows::core::implement].
 windows-core = "0.62.2"
 farwing-plugin-api = { path = "plugins/sdk" }
-libloading = "0.8.9"
-memmap2 = "0.9.11"
 farwing-amf-sys = { path = "vendor/amf-sys" }
 farwing-nvenc-sys = { path = "vendor/nvenc-sys" }
 farwing-vpl-sys = { path = "vendor/vpl-sys" }
 egui-directx11 = { path = "vendor/egui-directx11" }
+libloading = "0.8.9"
+memmap2 = "0.9.11"
 windows = { version = "0.62.2", default-features = false, features = [
     "Foundation",
     "Graphics_Capture",
