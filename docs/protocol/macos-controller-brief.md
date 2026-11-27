@@ -124,7 +124,7 @@ M1 已按代码确认 `src/main.rs` 的命令在 Mac 首版的取舍：
 | 顶层 | `Gui`、`Server`、`Login`、`Logout`、`Id`、`Devices`、`Connect`（含 `--dev-*` 参数）、`Assist`（作为主控）、`Friend`、`Grant`、`Sessions`、`Lan`、`Dev` | `WolConfigure`、`Update`、`Notification`、`Uninstall`、`Service`、`HostResident`、`InputAgent`、`CaptureAgent`、`Component`、`DisplayRecovery`、`PluginVideoHost`、`EncoderProbe`、`DesktopAccess`、`PluginHost`、`Host`、`Trusted` |
 | `Dev` 子命令 | `Ports`、`Power`、`Input`、`Video` | `Plugins`、`Camera`、`Voice`（依赖被控或 Windows 后端）；`Clipboard`、`Files`、`Diagnostics`（不在首版范围内，诊断模块也有被控侧逻辑） |
 
-`Trusted` 整个命令不编入：它操作本机被控端的信任列表，后台服务模式下经 `transport::direct::managed` 访问 Windows 常驻服务。命令定义、分派及 `src/application/mod.rs`、`src/application/cli.rs` 中对应的 Windows 专用入口均用 `#[cfg(windows)]` 隔开。Mac 上库的编译阻断尚未清完，`cargo check` 还未走到 `main.rs` 的类型检查；Windows 行为待 CI 回归验证。
+其中，`Trusted` 整个命令不编入：它操作本机被控端的信任列表，后台服务模式下经 `transport::direct::managed` 访问 Windows 常驻服务。命令定义、分派及 `src/application/mod.rs`、`src/application/cli.rs` 中对应的 Windows 专用入口均用 `#[cfg(windows)]` 隔开。Mac 上库的编译阻断尚未清完，`cargo check` 还未走到 `main.rs` 的类型检查；Windows 行为待 CI 回归验证。
 
 ### 1.4 检查
 
