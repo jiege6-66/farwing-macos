@@ -152,18 +152,19 @@
 
 ### 2.3 主控用到的共享类型
 
-这些类型现在放在 `features::host` 里，但主控也在用，要挪到共用位置（如 `media` 或 `features::stream_control`），或者确认在做法 B 下属于可编译的控制面：
+M1 已将下列主控也用到的类型、常量和函数放在共用层；尚未迁出的入口仍留在被控侧：
 
-| 用处 | 引用 |
+| 用处 | 现位置 |
 |---|---|
-| 画质档位与码率 | `features::host::parameters::{Tier, tier_rate}`（`src/features/stream_control/mod.rs:70`、`:82`） |
-| 显示器轨道数 | `features::host::peer::screens::TRACK_COUNT`（`src/features/stream_control/display_topology.rs:230`） |
-| 摄像头屏幕号 | `features::host::cameras::is_camera`（`src/application/viewer/screens.rs:237`、`stream_menu.rs:650`） |
-| 共享画面帧率 | `features::host::shared_view::FPS`（`src/application/viewer/stream_menu.rs:755`） |
-| 收听麦克风轨道 | `features::host::listen::TRACK`（`src/transport/rtc/peer.rs:706`） |
-| HEVC 负载类型 | `features::host::hevc::payloads`（`src/media/frame_crypto.rs:392`） |
-| WOL 报文与本地唤醒 | `features::host::wol::packet::LanInfo`（`src/account/api/mod.rs:1465`）、`wol::wake_locally`（`src/account/client/mod.rs:893`） |
-| 聊天画面 | `features::host::peer::chat_video::*`（§7.3） |
+| 画质档位与码率 | `media::geometry::{Tier, tier_rate}`（主控直接引用，保留被控侧对 `Tier` 的既有重导出） |
+| 视频轨道数 | `transport::rtc::tracks::TRACK_COUNT` |
+| 摄像头屏幕号 | `media::camera::{DISPLAY_ID_BIT, display_id, is_camera}` |
+| 共享画面帧率 | `features::stream_control::SHARED_VIEW_FPS` |
+| 收听麦克风轨道 | `transport::rtc::tracks::LISTEN_TRACK` |
+| HEVC 负载打包 | `media::hevc::payloads` |
+| WOL 报文 | `features::wol::packet` |
+| WOL 本地唤醒 | `features::host::wol::wake_locally`（待 M9 提供平台网卡后端，见 §8.2） |
+| 聊天画面 | `features::host::peer::chat_video::*`（留待 §7.3） |
 
 `features::stream_control::publisher*` 是被控一侧的发布逻辑，按做法 B 归入运行时。
 
