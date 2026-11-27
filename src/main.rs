@@ -12,7 +12,6 @@ use farwing::account::api;
 use farwing::account::client::AuthenticatedClient;
 use farwing::account::login;
 use farwing::application::app;
-#[cfg(windows)]
 use farwing::diagnostics::logging;
 use farwing::media;
 use farwing::product;
@@ -658,8 +657,7 @@ fn main() -> Result<()> {
     } else {
         None
     };
-    #[cfg(windows)]
-    let _logging = if matches!(command, Commands::Uninstall { .. }) {
+    let _logging = if skips_logging(&command) {
         None
     } else {
         Some(logging::init(
@@ -1147,6 +1145,15 @@ fn main() -> Result<()> {
         farwing::application::launch_installed(std::env::args_os().skip(1))?;
     }
     result
+}
+
+/// Uninstall can remove the log directory, so it must not hold log files open.
+fn skips_logging(command: &Commands) -> bool {
+    match command {
+        #[cfg(windows)]
+        Commands::Uninstall { .. } => true,
+        _ => false,
+    }
 }
 
 #[cfg(windows)]
