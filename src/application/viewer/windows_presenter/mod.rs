@@ -40,6 +40,8 @@ mod worker;
 
 mod plugin_capture;
 mod plugin_video;
+mod screen_windows;
+
+// Re-exported only for the Windows `dev plugins` check.
 #[cfg(windows)]
 pub(crate) use plugin_video::dev_render as dev_render_plugins;
-mod screen_windows;

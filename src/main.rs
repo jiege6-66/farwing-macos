@@ -732,10 +732,12 @@ fn main() -> Result<()> {
         Commands::WolConfigure { interface, mac } => {
             farwing::application::configure_wol(interface, mac)
         }
+        // The update block above returns or exits before dispatch.
         #[cfg(windows)]
         Commands::Update { .. } => unreachable!(),
         #[cfg(windows)]
         Commands::Uninstall { parent } => farwing::application::uninstall_application(parent),
+        // The component operation block above returns or exits before dispatch.
         #[cfg(windows)]
         Commands::Component { .. } => unreachable!(),
         #[cfg(windows)]
