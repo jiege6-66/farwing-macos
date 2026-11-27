@@ -1874,3 +1874,46 @@ dispatcher/libvpl/src/windows/main.cpp:7:10: fatal error: 'windows.h' file not f
 两条 `cargo tree` 均显示 `farwing` 直接依赖对应的 crate。根 `Cargo.toml` 将它们列在通用 `[dependencies]`，因此 macOS 也会构建 `vendor/vpl-sys/build.rs` 指定的 Windows dispatcher。`farwing-amf-sys` 已确认进入 Mac 依赖图，但不是这次报告的首个编译错误。
 
 下一次复测按[实现简报 §1.1](protocol/macos-controller-brief.md#11-cargo-依赖)检查：两项依赖应从 Mac 依赖图消失、在 Windows 依赖图保留，再重跑 `cargo check` 找下一处阻断。本条仅记录本地基线；未运行 GitHub CI 或 Windows 回归，也未生成可运行的 Mac 客户端。
+
+## macOS 主控：M1 构建层（§1.1–§1.2）之后的检查（2026-11-27）
+
+**结果：build script 全部通过，`farwing` 的 Rust 代码仍未通过检查（Cargo 退出码 `101`）。** 测试提交 `a80203b`，对照 `eef286b`；Apple Silicon、macOS 15.6、SDK 15.5。在工作树根目录用隔离 wrapper 执行：
+
+```sh
+run=/Volumes/OUTSIDE/dev-tools/farwing/run
+logs=/Volumes/OUTSIDE/dev-tools/farwing/tmp
+"$run" cargo +1.95.0 check --locked --target aarch64-apple-darwin >"$logs/m1-after-build-layer.log" 2>&1
+for target in x86_64-pc-windows-msvc aarch64-apple-darwin; do
+  "$run" cargo +1.95.0 tree --locked --target "$target" -e normal,build --prefix none --no-dedupe 2>&1 |
+    sort -u >"$logs/tree-after-$target.txt"
+done
+"$run" cargo +1.95.0 metadata --locked --format-version 1 >/dev/null
+```
+
+- 改动前重现 `farwing-vpl-sys` 的 `fatal error: 'windows.h' file not found`，同次也报告了 `farwing-amf-sys` 错误和 `build.rs` 断言。改动后首条为 `src/product.rs:16:5` 的 ``E0433: cannot find module or crate `windows` in this scope``（`use windows::core::PCWSTR;`）。
+- NetEq 在 Mac 上用 `WEBRTC_MAC` / `WEBRTC_POSIX` 编译通过，生成 `libfarwing_neteq.a` 和 `libfarwing_neteq_dsp.a`。这验证了[简报 §1.2](protocol/macos-controller-brief.md#12-buildrs-与-crate-根)的编译部分；未验证链接，未加 `CoreFoundation` 链接指令。
+- 与 `tree-before-*.txt` 对比：Windows 的包及版本 diff 为空（原始快照仅差基线的 Cargo 下载提示）；Mac 去掉 `farwing-amf-sys`、`farwing-vpl-sys`，增加 `farwing-codec` 及 AV1、H.264、HEVC kernels、`winit`、`egui-winit` 等，共增 29 条、减 2 条包记录。`metadata --locked` 通过，`Cargo.lock` 无改动。
+- 静态核对 Windows 分支：仍按资源嵌入 → NetEq → 字体 → 驱动打包的顺序执行；NetEq 的 defines、flags 及 `winmm` / `ws2_32` 链接指令和顺序不变。
+
+`farwing`（lib）共 **1,286 条 error、1 条 warning**。按首个报错位置和所属子系统归类，每条只计一次，包含缺失导入引起的连带报错，不代表有 1,286 个独立问题。
+
+| 简报章节 | 阻断 | 条数 | 代表位置 |
+|---|---|---:|---|
+| §0.2、§3.2 | 远程剪贴板、文件传输和拖放依赖 Win32 | 353 | `src/features/clipboard/native.rs:10`、`src/features/file_transfer/storage.rs:12` |
+| §0.2、§1.3 | 插件及其视频路径依赖仅在 Windows 编入的插件 SDK 和 D3D11 | 92 | `src/application/dev_plugins.rs:7`、`src/application/viewer/windows_presenter/plugin_video.rs:9` |
+| §1.3、§4.2 | Windows 命令入口及安装、维护与组件代码仍被编入 | 40 | `src/application/mod.rs:39`、`src/application/app/maintenance.rs:2` |
+| §2.1–§2.2 | 被控采集、编码、输入等运行时及后台服务没有解耦 | 212 | `src/features/host/mod.rs:127`、`src/session/presence.rs:74` |
+| §2.3 | 除下列通话相关项外，尚未直接报告 `Tier`、`TRACK_COUNT` 等共享项缺失；它们所在的被控模块尚未拆分 | 0 | `src/features/stream_control/display_topology.rs:230`（引用点，非报错） |
+| §3.1–§3.3 | 硬件身份、能力、数据路径、`PCWSTR` 包装及诊断、日志使用 Windows API | 30 | `src/account/auth/mod.rs:281`、`src/product.rs:16`、`src/diagnostics/logging/files.rs:51` |
+| §3.4、§2.2 | 凭据仍引用服务 vault；命令行密码输入依赖 Windows console | 7 | `src/account/auth/secret.rs:2`、`src/account/login/mod.rs:110` |
+| §3.5 | 单实例及实例间消息依赖 named mutex、`WM_COPYDATA` | 31 | `src/application/app/instance.rs:7`、`src/session/presence.rs:140` |
+| §3.6 | 系统语言调用 Win32；字体加载引用 Windows 依赖 `memmap2` | 4 | `src/i18n/mod.rs:113`、`src/ui/fonts.rs:65` |
+| §4 | 事件循环、egui 呈现、托盘、窗口及文件对话框仍依赖 Windows（其中 5 条为 `winit::platform::windows` 导入） | 191 | `src/ui/windows.rs:21`、`src/ui/tray.rs:5` |
+| §5.2–§5.4 | 解码后端、GPU 句柄、surface、诊断和软件解码槽（A1–A3）仍绑定 Windows | 22 | `src/media/decode_api/video.rs:6`、`src/media/decoder_pool.rs:34`、`src/media/decoder/software_slot.rs:7` |
+| §5.5 | 视频呈现和 HDR 路径依赖 D3D11 / DXGI 及 Windows 窗口与显示接口 | 90 | `src/application/viewer/windows_presenter/renderer.rs:16`、`src/session/negotiation.rs:90` |
+| §6.2 | HID 判断、脚本输入和按键计时依赖 Windows 键盘模块 | 4 | `src/features/remote_input.rs:15`、`:309`、`src/application/dev_input.rs:9` |
+| §6.3–§6.5 | 键盘钩子、鼠标、光标和快捷键依赖 Win32 | 100 | `src/application/viewer/windows_keyboard.rs:10`、`src/application/viewer_shortcuts.rs:61` |
+| §7.3、§2.3 | 通话采集与画面依赖 Windows 和被控 `chat_video` | 99 | `src/features/voice/capture.rs:57`、`src/features/host/peer/chat_video.rs:16` |
+| §8.2 | 局域网地址、路由、网络变化与睡眠唤醒依赖 Windows | 11 | `src/transport/direct/lan.rs:133`、`src/transport/signal/mod.rs:835` |
+
+本次在 lib 的名字解析错误处失败，`src/main.rs` 的命令分派（§1.3）尚未检查；未解析的导入也可能遮住后续类型错误（如 §7.2 的 `HostId::Wasapi`）。未验证 Windows 构建与回归、macOS 最终链接或 GitHub CI，未生成可运行的 Mac 客户端。
