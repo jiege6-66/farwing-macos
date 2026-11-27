@@ -26,6 +26,7 @@ use farwing::session::controller;
     about = "Farwing Client — 自建远程桌面与串流客户端"
 )]
 struct Cli {
+    #[cfg(windows)]
     #[arg(long, hide = true)]
     bootstrap_version: bool,
     /// 配置档名称，隔离身份、配置和凭据（开发时多实例并行）；未指定时读取 FARWING_PROFILE，否则为 default
@@ -583,7 +584,7 @@ enum ServerAction {
 
 fn main() -> Result<()> {
     // The profile selects every per-user directory, credential and named object,
-    // so resolve it from the raw arguments before bootstrap, clap or logging run.
+    // so resolve it from the raw arguments before argument parsing and logging.
     if let Err(error) = product::profile_arg(std::env::args_os().skip(1))
         .and_then(|profile| product::init_profile(profile.as_deref()))
     {
@@ -591,6 +592,8 @@ fn main() -> Result<()> {
         attach_parent_console();
         return Err(error);
     }
+    farwing::i18n::init();
+    #[cfg(windows)]
     farwing::application::bootstrap::initialize()?;
     let parsed = Cli::try_parse();
 
@@ -620,6 +623,7 @@ fn main() -> Result<()> {
         cli.profile.as_deref().is_none_or(|p| p == product::profile()),
         "--profile 参数解析不一致"
     );
+    #[cfg(windows)]
     if cli.bootstrap_version {
         println!("1");
         return Ok(());

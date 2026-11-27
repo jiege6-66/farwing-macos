@@ -5,9 +5,9 @@ use super::input::fail_cursor_request;
 use super::requests::Waiting;
 use super::wire::{self, SessionBody, StreamRequest};
 use super::{
-    MAX_CUSTOM_BITRATE_MBPS, RemoteDisplayState, StreamControlHandle, StreamControlPreferences,
-    StreamControlSettings, StreamControlState, StreamQuality, custom_bitrate_supported,
-    ensure_ready, feature_supported, lock,
+    HDR_SUPPORTED, MAX_CUSTOM_BITRATE_MBPS, RemoteDisplayState, StreamControlHandle,
+    StreamControlPreferences, StreamControlSettings, StreamControlState, StreamQuality,
+    custom_bitrate_supported, ensure_ready, feature_supported, lock,
 };
 use crate::i18n::t;
 use crate::media::{FrameRateChoice, LocalDisplayInfo};
@@ -51,7 +51,8 @@ impl Wanted {
                 .min(self.display.refresh_hz.max(1))
                 .max(1),
             chroma444: settings.true_color,
-            hdr: settings.hdr,
+            // Mask both session.start and later stream requests.
+            hdr: HDR_SUPPORTED && settings.hdr,
             codec: self.codec,
             cursor: self.cursor,
             weak_network: match self.weak_network {
@@ -395,7 +396,8 @@ pub(super) fn color_supported(state: &StreamControlState) -> bool {
 
 /// HDR takes a 10-bit format both sides support, and HDR on the viewed
 /// display and on this one.
-pub(super) fn ensure_hdr(state: &StreamControlState) -> Result<()> {
+#[cfg(windows)]
+fn ensure_hdr(state: &StreamControlState) -> Result<()> {
     let limits = state
         .stream_state
         .as_ref()
@@ -418,6 +420,12 @@ pub(super) fn ensure_hdr(state: &StreamControlState) -> Result<()> {
         t().features.stream_local_hdr_off
     );
     Ok(())
+}
+
+/// Off Windows this controller is SDR-only.
+#[cfg(not(windows))]
+fn ensure_hdr(_state: &StreamControlState) -> Result<()> {
+    bail!("{}", t().features.stream_hdr_unsupported);
 }
 
 pub(super) fn format_proposal(
@@ -520,5 +528,45 @@ pub(super) fn frame_rate_choice(fps: u32) -> FrameRateChoice {
         60 => FrameRateChoice::Fps60,
         90 => FrameRateChoice::Fps90,
         _ => FrameRateChoice::Fps144,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::features::stream_control::default_settings;
+    use crate::media::ConnectionMediaOptions;
+
+    #[test]
+    fn wanted_stream_only_requests_hdr_on_windows() {
+        let mut wanted = Wanted {
+            settings: StreamControlSettings {
+                hdr: true,
+                true_color: false,
+                frame_rate: FrameRateChoice::Fps60,
+                quality: StreamQuality::Auto,
+                custom_bitrate_mbps: 30,
+            },
+            display: LocalDisplayInfo::FALLBACK,
+            codec: None,
+            cursor: true,
+            weak_network: Default::default(),
+            cinema: false,
+        };
+        // Pin the request mask independently of saved-preference handling.
+        assert_eq!(wanted.stream().hdr, HDR_SUPPORTED);
+        wanted.settings.hdr = false;
+        assert!(!wanted.stream().hdr);
+    }
+
+    #[test]
+    fn saved_hdr_preference_respects_platform_policy() {
+        let profile = ConnectionMediaOptions::default()
+            .resolve(LocalDisplayInfo::FALLBACK)
+            .unwrap();
+        let mut saved = default_settings(profile);
+        saved.hdr = true;
+        let preferences = StreamControlPreferences::from_saved(saved, profile);
+        assert_eq!(preferences.settings.hdr, HDR_SUPPORTED);
     }
 }

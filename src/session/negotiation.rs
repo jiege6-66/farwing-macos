@@ -75,7 +75,7 @@ fn connect_options(
         |p| p,
     );
     let device = settings.device.unwrap_or_default();
-    let mut stream = crate::features::stream_control::Wanted {
+    let stream = crate::features::stream_control::Wanted {
         settings: settings.settings,
         display: profile.local_display,
         codec: profile.codec.preferred(),
@@ -88,8 +88,13 @@ fn connect_options(
         cinema: device.cinema,
     }
     .stream();
-    // HDR needs a 10-bit decoder and an HDR display here.
-    stream.hdr &= decoders.iter().any(|d| d.bit10) && crate::platform::display_hdr::any_hdr();
+    #[cfg(windows)]
+    let stream = {
+        // HDR needs a 10-bit decoder and an HDR display here.
+        let mut stream = stream;
+        stream.hdr &= decoders.iter().any(|d| d.bit10) && crate::platform::display_hdr::any_hdr();
+        stream
+    };
     ConnectOptions {
         decoders: decoders.to_vec(),
         display: Some(LocalDisplay {

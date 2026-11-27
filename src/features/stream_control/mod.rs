@@ -52,6 +52,9 @@ pub(crate) mod publisher;
 const DEFAULT_CUSTOM_BITRATE_MBPS: u32 = 30;
 pub const MAX_CUSTOM_BITRATE_MBPS: u32 = 500;
 
+/// The first macOS controller is SDR-only (`docs/protocol/macos-controller-brief.md` §5.5).
+pub(crate) const HDR_SUPPORTED: bool = cfg!(windows);
+
 /// The frame rate of the shared viewer stream.
 pub(crate) const SHARED_VIEW_FPS: u32 = 60;
 
@@ -146,6 +149,8 @@ pub(crate) struct StreamControlPreferences {
 impl StreamControlPreferences {
     pub(crate) fn from_saved(saved: StreamControlSettings, _profile: ConnectionMediaProfile) -> Self {
         let mut settings = saved;
+        // An HDR preference saved on Windows must not carry into an SDR session.
+        settings.hdr &= HDR_SUPPORTED;
         if let Some(quality) = dev_quality() {
             settings.quality = quality;
         }
@@ -643,11 +648,12 @@ impl StreamControlHandle {
             None
         };
         StreamControlSnapshot {
-            hdr_supported: state
-                .stream_state
-                .as_ref()
-                .and_then(|s| s.limits.as_ref())
-                .is_some_and(|limits| limits.hdr)
+            hdr_supported: HDR_SUPPORTED
+                && state
+                    .stream_state
+                    .as_ref()
+                    .and_then(|s| s.limits.as_ref())
+                    .is_some_and(|limits| limits.hdr)
                 && state.decoders.iter().any(|d| d.bit10),
             hdr_unavailable: format_proposal(&state, None, Some(true))
                 .err()
