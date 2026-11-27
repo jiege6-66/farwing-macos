@@ -244,6 +244,7 @@ impl AuthenticatedClient {
     ) -> Result<crate::features::port_mapping::store::Store> {
         crate::features::port_mapping::store::Store::new(self.session.user_id(), publisher_id)
     }
+    #[cfg(windows)]
     pub(crate) fn file_transfer_store(
         &self,
         publisher_id: &str,

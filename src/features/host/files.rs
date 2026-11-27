@@ -1,9 +1,14 @@
 //! FILE v2 admission and session/bulk channel ownership for the
 //! ordinary-user executor. Frames pass through unchanged in both directions.
+#[cfg(windows)]
 use super::{Lease, lock};
+#[cfg(windows)]
 use crate::features::file_transfer::host::{self as executor, agent::Backend};
+#[cfg(windows)]
 use crate::i18n::t;
+#[cfg(windows)]
 use anyhow::{Result, ensure};
+#[cfg(windows)]
 use std::{
     collections::HashMap,
     sync::{
@@ -12,14 +17,18 @@ use std::{
     },
     time::Duration,
 };
+#[cfg(windows)]
 use tokio::sync::mpsc;
+#[cfg(windows)]
 use tokio_util::sync::CancellationToken;
+#[cfg(windows)]
 use webrtc::data_channel::{RTCDataChannel, data_channel_state::RTCDataChannelState};
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Status {
     pub active: bool,
     pub error: Option<String>,
 }
+#[cfg(windows)]
 #[derive(Default)]
 struct State {
     capabilities: executor::Capabilities,
@@ -28,8 +37,10 @@ struct State {
     incoming: Option<mpsc::Sender<(u64, Vec<u8>)>>,
     receiver: Option<mpsc::Receiver<(u64, Vec<u8>)>>,
 }
+#[cfg(windows)]
 #[derive(Clone)]
 pub(crate) struct Receiver(Arc<Mutex<State>>);
+#[cfg(windows)]
 impl Default for Receiver {
     fn default() -> Self {
         let (tx, rx) = mpsc::channel(32);
@@ -40,6 +51,7 @@ impl Default for Receiver {
         })))
     }
 }
+#[cfg(windows)]
 impl Receiver {
     pub fn capabilities(&self, capabilities: executor::Capabilities) {
         let mut state = lock(&self.0);
@@ -92,6 +104,7 @@ impl Receiver {
         Ok(true)
     }
 }
+#[cfg(windows)]
 pub(super) async fn run(
     receiver: Receiver,
     lease: Lease,
@@ -186,6 +199,7 @@ pub(super) async fn run(
     lock(&receiver.0).incoming = None;
     lease.file_status(Status::default());
 }
+#[cfg(windows)]
 async fn send(
     receiver: &Receiver,
     generation: u64,

@@ -302,6 +302,7 @@ fn probe_in_child(
         .stderr(Stdio::null());
     crate::diagnostics::logging::configure_child(&mut command);
     let mut child = command.spawn().context("无法启动编码能力检查进程")?;
+    #[cfg(windows)]
     let _job = crate::plugins::process::Job::attach(&child);
     let mut input = child.stdin.take().context("检查进程没有输入")?;
     let mut output = child.stdout.take().context("检查进程没有输出")?;

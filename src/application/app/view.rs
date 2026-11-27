@@ -106,6 +106,7 @@ pub(super) struct CenterUi {
     local_identity: Option<(String, String)>,
     pub(super) shortcuts: crate::application::viewer_shortcuts::Editor,
 
+    #[cfg(windows)]
     plugins: crate::plugins::Manager,
 }
 
@@ -163,6 +164,7 @@ enum Icon {
     Edit,
     Logout,
     Logs,
+    #[cfg(windows)]
     Plugins,
     Keyboard,
     Diagnostics,
@@ -244,6 +246,7 @@ fn paint_icon(p: &egui::Painter, rect: egui::Rect, icon: Icon, color: Color32) {
             ));
             p.add(egui::Shape::line(vec![q(4.0, 3.0), q(8.0, 3.5), q(10.0, 8.0)], s));
         }
+        #[cfg(windows)]
         Icon::Plugins => {
             crate::plugins::paint_plugin_icon(p, rect, color);
         }

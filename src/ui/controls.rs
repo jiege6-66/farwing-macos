@@ -23,7 +23,9 @@ pub(crate) use notices::{
     observe_notice_action,
     progress_notice, show_notices,
 };
+#[cfg(windows)]
 pub(crate) mod file_icons;
+#[cfg(windows)]
 pub(crate) mod files;
 pub(crate) use dialogs::{DialogAction, DialogIcon, dialog_actions, dialog_header};
 mod mapping;

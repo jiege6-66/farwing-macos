@@ -16,8 +16,11 @@ pub(crate) const MAX_WINDOW: u64 = 64 * 1024 * 1024;
 
 /// What a stream carries; it selects the owner on the receiving side.
 pub(crate) mod kind {
+    #[cfg(any(windows, test))]
     pub const FILE: i32 = 1;
+    #[cfg(windows)]
     pub const CLIPBOARD: i32 = 2;
+    #[cfg(windows)]
     pub const DRAG: i32 = 3;
     pub const DIAGNOSTICS: i32 = 4;
 }

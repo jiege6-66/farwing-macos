@@ -35,6 +35,7 @@ pub mod session;
 pub(crate) mod storage;
 pub mod transport;
 
+#[cfg(windows)]
 pub mod plugins;
 mod ui;
 

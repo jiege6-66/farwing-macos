@@ -5,6 +5,7 @@ use super::wire::{SessionBody, encode_pb_echo_response};
 use super::{HelloStatus, StreamControlHandle, lock, negotiated};
 use crate::i18n::t;
 use crate::protocol::peer::{self, FrameType};
+#[cfg(windows)]
 use crate::protocol::peer::feature;
 use crate::media::VideoCodec;
 use anyhow::{Result, anyhow};
@@ -40,6 +41,7 @@ impl StreamControlHandle {
                 && !state.annotation.enabled
                 && !state.annotation.toggling();
             self.microphone.disconnect();
+            #[cfg(windows)]
             self.clipboard.suspend();
             state.peer = Default::default();
             state.grants = None;
@@ -126,6 +128,7 @@ impl StreamControlHandle {
         if !enabled {
             state.restore_input_pending = false;
             self.disable_microphone_locked(&mut state);
+            #[cfg(windows)]
             self.clipboard.suspend();
         }
         if enabled {
@@ -229,6 +232,7 @@ impl StreamControlHandle {
                     tracks = forward.tracks.len(), "host forwarding instruction");
                 self.forward.send_replace(Some(forward));
             }
+            #[cfg(windows)]
             SessionBody::ClipboardFiles(permission) => {
                 state.clipboard_files_allowed = permission.enabled;
             }
@@ -309,6 +313,7 @@ impl StreamControlHandle {
     fn handle_permissions(&self, body: &[u8]) -> Result<()> {
         let grants = crate::protocol::host_event::decode_permissions(body)?;
         tracing::info!(?grants, "session capabilities received");
+        #[cfg(windows)]
         self.files
             .permit(grants.iter().any(|cap| cap == farwing_protocol::caps::FILES));
         let mut state = lock(&self.shared);
@@ -344,6 +349,7 @@ impl StreamControlHandle {
         };
         let hello = &received.hello;
         let features = received.features();
+        #[cfg(windows)]
         self.files.capabilities(features.has(feature::FILES));
         let mut state = lock(&self.shared);
         state.peer = features;

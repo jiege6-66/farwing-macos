@@ -37,6 +37,7 @@ impl Feature {
 pub(crate) fn local_capabilities() -> Vec<String> {
     [
         name::HOST,
+        #[cfg(windows)]
         name::FILES,
         name::PORTS,
         name::POWER,

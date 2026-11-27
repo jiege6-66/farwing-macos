@@ -56,8 +56,8 @@ pub(super) async fn bind_channel(
     input: crate::features::host::input::Receiver,
     microphone: crate::features::host::microphone::Receiver,
     audio: crate::features::host::audio::Audio,
-    clipboard: crate::features::host::clipboard::Receiver,
-    files: crate::features::host::files::Receiver,
+    #[cfg(windows)] clipboard: crate::features::host::clipboard::Receiver,
+    #[cfg(windows)] files: crate::features::host::files::Receiver,
     ports: crate::features::port_mapping::host::Receiver,
     annotation: crate::features::host::annotation::Receiver,
     control_ingress: crate::transport::fct::ControlReceiver,
@@ -84,12 +84,15 @@ pub(super) async fn bind_channel(
         annotation.bind(&channel);
     }
     if text || file {
+        #[cfg(windows)]
         files.bind(&channel);
         diagnostics.attach(&channel);
     }
+    #[cfg(windows)]
     if file {
         clipboard.bind_file(&channel);
     }
+    #[cfg(windows)]
     let clipboard_generation = if text {
         Some(clipboard.bind(channel.id()))
     } else {
@@ -119,15 +122,19 @@ pub(super) async fn bind_channel(
     let closing_target = report_target.clone();
     let closing_input = input.clone();
     let closing_microphone = microphone.clone();
+    #[cfg(windows)]
     let closing_files = files.clone();
+    #[cfg(windows)]
     let closing_clipboard = clipboard.clone();
     let closing_annotation = annotation.clone();
     channel.on_close(Box::new(move || {
         if let Some(channel) = close_channel.upgrade() {
+            #[cfg(windows)]
             closing_files.close(&channel);
             if text {
                 closing_annotation.close(&channel);
             }
+            #[cfg(windows)]
             if file {
                 closing_clipboard.close_file(&channel);
             }
@@ -223,6 +230,7 @@ pub(super) async fn bind_channel(
                 report_target: report_target.clone(),
                 microphone: microphone.clone(),
                 audio: audio.clone(),
+                #[cfg(windows)]
                 files: files.clone(),
                 annotation: annotation.clone(),
             },
@@ -246,7 +254,9 @@ pub(super) async fn bind_channel(
         let cancel = cancel.clone();
         let report_target = report_target.clone();
         let input = input.clone();
+        #[cfg(windows)]
         let files = files.clone();
+        #[cfg(windows)]
         let clipboard = clipboard.clone();
         let diagnostics = diagnostics.clone();
         let business = business.clone();
@@ -276,6 +286,7 @@ pub(super) async fn bind_channel(
                 Some(FrameType::Transfer | FrameType::Flow) => {
                     // Streams by kind: clipboard and drag data go to the
                     // clipboard backend, diagnostics to its sender, files below.
+                    #[cfg(windows)]
                     if file {
                         match clipboard.receive_bulk(&channel, &message.data) {
                             Ok(true) => return,
@@ -292,6 +303,7 @@ pub(super) async fn bind_channel(
                         }
                         return;
                     }
+                    #[cfg(windows)]
                     if let Err(error) = files.receive(&channel, &message.data).await {
                         tracing::warn!(%error, "host file message rejected");
                     }
@@ -301,12 +313,14 @@ pub(super) async fn bind_channel(
                         tracing::warn!(%error, "diagnostics message rejected");
                     }
                 }
+                #[cfg(windows)]
                 Some(FrameType::File) => {
                     if let Err(error) = files.receive(&channel, &message.data).await {
                         tracing::warn!(%error, "host file message rejected");
                     }
                 }
                 _ if !text => {}
+                #[cfg(windows)]
                 Some(FrameType::Drag) => {
                     if let Err(error) = clipboard.receive(clipboard_generation.unwrap(), &message.data) {
                         tracing::warn!(%error, "native drag packet rejected");
@@ -325,6 +339,7 @@ pub(super) async fn bind_channel(
                     .text
                     .as_ref()
                     .is_some_and(|current| current.ptr_eq(&weak)) => {}
+                #[cfg(windows)]
                 Some(FrameType::Clipboard) => {
                     if let Err(error) = clipboard.receive(clipboard_generation.unwrap(), &message.data) {
                         tracing::warn!(%error, "rejected host clipboard message");
@@ -350,6 +365,7 @@ struct Business {
     report_target: ReportTarget,
     microphone: crate::features::host::microphone::Receiver,
     audio: crate::features::host::audio::Audio,
+    #[cfg(windows)]
     files: crate::features::host::files::Receiver,
     annotation: crate::features::host::annotation::Receiver,
 }
@@ -398,6 +414,7 @@ impl Business {
             report_target,
             microphone,
             audio,
+            #[cfg(windows)]
             files,
             annotation,
         } = self;
@@ -519,6 +536,7 @@ impl Business {
         };
         match responses {
             Ok(responses) => {
+                #[cfg(windows)]
                 if let Some(caps) = responses.files {
                     files.capabilities(caps);
                 }

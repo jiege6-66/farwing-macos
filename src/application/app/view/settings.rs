@@ -11,6 +11,7 @@ pub(super) enum SettingsTab {
     Controller,
     Network,
     Shortcuts,
+    #[cfg(windows)]
     Plugins,
     Service,
     Diagnostics,
@@ -28,7 +29,10 @@ impl SettingsTab {
                 text.group_remote,
                 &[Self::Host, Self::Controller, Self::Network],
             ),
+            #[cfg(windows)]
             (text.group_extensions, &[Self::Shortcuts, Self::Plugins]),
+            #[cfg(not(windows))]
+            (text.group_extensions, &[Self::Shortcuts]),
             (
                 text.group_system,
                 &[Self::Service, Self::Diagnostics, Self::Logs, Self::About],
@@ -45,6 +49,7 @@ impl SettingsTab {
             Self::Controller => text.tab_controller,
             Self::Network => text.tab_network,
             Self::Shortcuts => text.tab_shortcuts,
+            #[cfg(windows)]
             Self::Plugins => text.tab_plugins,
             Self::Service => text.tab_service,
             Self::Diagnostics => text.tab_diagnostics,
@@ -61,6 +66,7 @@ impl SettingsTab {
             Self::Controller => Icon::Assist,
             Self::Network => Icon::Refresh,
             Self::Shortcuts => Icon::Keyboard,
+            #[cfg(windows)]
             Self::Plugins => Icon::Plugins,
             Self::Service => Icon::Settings,
             Self::Diagnostics => Icon::Diagnostics,
@@ -118,6 +124,7 @@ impl DeviceCenterApp {
                     ui.set_min_height(theme::CONTROL_HEIGHT);
                     ui.label(RichText::new(tab.label()).size(theme::TITLE).strong());
                     ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| match tab {
+                        #[cfg(windows)]
                         SettingsTab::Plugins => self.center_ui.plugins.header_actions(ui),
                         SettingsTab::Diagnostics => self.diagnostic_export_button(ui),
                         SettingsTab::Logs => {
@@ -150,6 +157,7 @@ impl DeviceCenterApp {
                         crate::ui::controls::page_scroll("settings-shortcuts")
                             .show(ui, |ui| self.center_ui.shortcuts.draw(ui));
                     }
+                    #[cfg(windows)]
                     SettingsTab::Plugins => self.center_ui.plugins.show(ui),
                     SettingsTab::Service => {
                         let active = self

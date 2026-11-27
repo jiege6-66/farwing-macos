@@ -16,6 +16,7 @@ pub(super) struct ControlIngress {
     pub forwarding: Option<Arc<crate::features::host::forwarding::Registration>>,
     /// Receives this participant's `POINTER` frames.
     pub membership: Option<Arc<crate::features::host::participants::Membership>>,
+    #[cfg(windows)]
     pub files: crate::features::host::files::Receiver,
     pub report_target: ReportTarget,
     pub kcp: FctControl,
@@ -28,6 +29,7 @@ impl ControlIngress {
             recovery,
             forwarding,
             membership,
+            #[cfg(windows)]
             files,
             report_target,
             kcp,
@@ -41,6 +43,7 @@ impl ControlIngress {
         let control_stop = cancel.clone();
         let control_target = report_target.clone();
         let control_input = input.clone();
+        #[cfg(windows)]
         let control_files = files.clone();
         let control_receiver: crate::transport::fct::ControlReceiver = Arc::new(
             move |stream_id, bytes| {
@@ -95,6 +98,7 @@ impl ControlIngress {
                     membership.set_color(color);
                 }
                 let responses = crate::features::stream_control::publisher::receive(bytes)?;
+                #[cfg(windows)]
                 if let Some(caps) = responses.files {
                     control_files.capabilities(caps);
                 }

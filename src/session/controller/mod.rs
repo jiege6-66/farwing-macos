@@ -223,6 +223,7 @@ impl ControllerConnection {
         )
         .await
     }
+    #[cfg(windows)]
     pub(crate) async fn connect_files(
         client: &AuthenticatedClient,
         device: &crate::account::api::DeviceInfo,

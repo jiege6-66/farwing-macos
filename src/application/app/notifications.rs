@@ -1,5 +1,6 @@
 //! Remote-access notices share one owner, independent of delivery surface.
 
+#[cfg(windows)]
 mod files;
 mod worker;
 use super::DeviceCenterApp;
@@ -478,6 +479,7 @@ impl Center {
         let now = chrono::Utc::now().timestamp();
         let text = &t().app;
         // Transfers are not tied to a participant: only end the only one.
+        #[cfg(windows)]
         let disconnect = status_snapshot
             .as_ref()
             .filter(|s| s.connections.len() <= 1)
@@ -624,6 +626,7 @@ impl Center {
                 self.last_source.retain(|key, _| keys.contains(key));
             }
         }
+        #[cfg(windows)]
         if let Some(snapshot) = status_snapshot {
             for (key, mut card) in files::cards(snapshot.file_transfers, now) {
                 if card.transfer.as_ref().is_some_and(|t| t.progress.is_some()) {

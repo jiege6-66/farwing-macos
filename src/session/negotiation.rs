@@ -16,6 +16,7 @@ pub(crate) enum ControlPurpose {
     Viewing,
     Audio,
     PortMapping,
+    #[cfg(windows)]
     FileTransfer,
     Diagnostics,
     /// The host's cameras only.
@@ -28,6 +29,7 @@ impl ControlPurpose {
             Self::Viewing => Purpose::Desktop,
             Self::Audio => Purpose::Audio,
             Self::PortMapping => Purpose::Ports,
+            #[cfg(windows)]
             Self::FileTransfer => Purpose::Files,
             Self::Diagnostics => Purpose::Diagnostics,
             Self::Camera => Purpose::Camera,

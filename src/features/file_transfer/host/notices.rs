@@ -1,13 +1,21 @@
 //! Task-owned progress snapshots; no GUI or notification I/O in transfer loops.
+#[cfg(windows)]
 use super::*;
+#[cfg(windows)]
 use crate::i18n::t;
+#[cfg(windows)]
 use std::sync::Mutex;
+#[cfg(windows)]
 use std::time::{Duration, Instant};
 
 pub(crate) const RUNNING: i32 = 0;
+#[cfg(windows)]
 pub(crate) const COMPLETE: i32 = 1;
+#[cfg(windows)]
 pub(crate) const FAILED: i32 = 2;
+#[cfg(windows)]
 pub(crate) const PAUSED: i32 = 3;
+#[cfg(windows)]
 pub(crate) const CANCELLED: i32 = 4;
 pub(crate) const INTERRUPTED: i32 = 5;
 #[derive(Clone, PartialEq, prost::Message, serde::Serialize, serde::Deserialize)]
@@ -44,8 +52,10 @@ impl Notice {
         }
     }
 }
+#[cfg(windows)]
 #[derive(Clone, Default)]
 pub(crate) struct Journal(Arc<Mutex<Vec<Notice>>>);
+#[cfg(windows)]
 impl Journal {
     pub fn publish(&self, value: Notice) {
         let mut values = super::super::lock(&self.0);
@@ -79,6 +89,7 @@ impl Journal {
         }
     }
 }
+#[cfg(windows)]
 pub(crate) struct Progress {
     journal: Journal,
     notice: Notice,
@@ -88,6 +99,7 @@ pub(crate) struct Progress {
     /// The last speed sample: when, and how much was done then.
     sample: Option<(Instant, u64)>,
 }
+#[cfg(windows)]
 impl Progress {
     pub fn describe(&mut self, items: &[FileInfo], folder: &std::path::Path) {
         let files = items.iter().filter(|f| !f.directory).collect::<Vec<_>>();
@@ -156,6 +168,7 @@ impl Progress {
         self.journal.publish(self.notice.clone());
     }
 }
+#[cfg(windows)]
 impl Drop for Progress {
     fn drop(&mut self) {
         if self.notice.state == RUNNING {

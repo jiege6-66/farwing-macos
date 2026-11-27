@@ -38,6 +38,7 @@ pub(super) enum GuiCommand {
         device: DeviceInfo,
         options: ConnectionMediaOptions,
     },
+    #[cfg(windows)]
     Files {
         generation: u64,
         device: DeviceInfo,

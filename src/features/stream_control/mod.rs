@@ -253,8 +253,11 @@ pub struct StreamControlHandle {
     audio_mode: tokio::sync::watch::Sender<bool>,
     audio_quality: Arc<Mutex<audio_quality::State>>,
     microphone: crate::media::microphone::Microphone,
+    #[cfg(windows)]
     clipboard: crate::features::clipboard::Clipboard,
+    #[cfg(windows)]
     drag_drop: crate::features::drag_drop::controller::Controller,
+    #[cfg(windows)]
     files: Arc<crate::features::file_transfer::Transport>,
     diagnostics: crate::diagnostics::remote::Controller,
     mouse: crate::features::remote_input::RemoteInput,
@@ -306,6 +309,7 @@ impl ScreenBaseline {
 }
 
 struct StreamControlState {
+    #[cfg(windows)]
     clipboard_files_allowed: bool,
     remote_upgrade: Option<crate::features::remote_upgrade::RemoteUpgrade>,
     annotation: annotation::Annotation,
@@ -411,6 +415,7 @@ impl StreamControlHandle {
         let mouse = crate::features::remote_input::RemoteInput::default();
         let cursor = crate::features::remote_cursor::RemoteCursorState::default();
         let state = StreamControlState {
+            #[cfg(windows)]
             clipboard_files_allowed: true,
             remote_upgrade: None,
             annotation: Default::default(),
@@ -501,8 +506,11 @@ impl StreamControlHandle {
                 audio_mode: tokio::sync::watch::channel(profile.audio_only).0,
                 audio_quality: Arc::new(Mutex::new(audio_quality::State::new(profile.audio_only))),
                 microphone: crate::media::microphone::Microphone::new(),
+                #[cfg(windows)]
                 clipboard: crate::features::clipboard::Clipboard::new(),
+                #[cfg(windows)]
                 drag_drop: Default::default(),
+                #[cfg(windows)]
                 files: Arc::new(crate::features::file_transfer::Transport::default()),
                 diagnostics: Default::default(),
                 mouse,
@@ -533,6 +541,7 @@ impl StreamControlHandle {
         lock(&self.shared).grants.clone()
     }
 
+    #[cfg(windows)]
     pub(crate) fn clipboard(&self) -> &crate::features::clipboard::Clipboard {
         &self.clipboard
     }
@@ -597,10 +606,12 @@ impl StreamControlHandle {
             .send(wire::push(wire::SessionBody::VideoFeedback(feedback)))
             .is_ok()
     }
+    #[cfg(windows)]
     pub(crate) fn drag_drop(&self) -> &crate::features::drag_drop::controller::Controller {
         &self.drag_drop
     }
 
+    #[cfg(windows)]
     pub(crate) fn file_transfer(&self) -> &Arc<crate::features::file_transfer::Transport> {
         &self.files
     }

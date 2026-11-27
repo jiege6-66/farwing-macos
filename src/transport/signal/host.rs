@@ -946,7 +946,9 @@ impl Session {
                     options.stream,
                     negotiated,
                     deferred,
+                    #[cfg(windows)]
                     options.clipboard_level(),
+                    #[cfg(windows)]
                     options.file_capabilities(),
                     data_only,
                     forwarding_session,

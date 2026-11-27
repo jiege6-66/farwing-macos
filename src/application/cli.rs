@@ -1487,12 +1487,15 @@ pub async fn dev_input(
     options: crate::media::ConnectionMediaOptions,
 ) -> Result<()> {
     use crate::application::dev_input::{self, Runner};
+    #[cfg(windows)]
     use crate::features::clipboard::{self, Clipboard};
     let text = std::fs::read_to_string(script)
         .with_context(|| format!("无法读取脚本 {}", script.display()))?;
     let steps = dev_input::parse_script(&text, allow_disruptive)?;
     anyhow::ensure!(!steps.is_empty(), "脚本没有任何步骤");
+    #[cfg(windows)]
     let exchange = Clipboard::memory(crate::transport::transfer::kind::CLIPBOARD);
+    #[cfg(windows)]
     clipboard::install_dev_exchange(exchange.clone());
     let run = |connection: crate::session::controller::ControllerConnection| async move {
         println!("会话已建立，等待键鼠通道就绪");
@@ -1503,6 +1506,7 @@ pub async fn dev_input(
         let result = async {
             let runner = Runner::start(
                 connection.stream_control_handle(),
+                #[cfg(windows)]
                 exchange,
                 &runner_options,
             )

@@ -537,6 +537,7 @@ impl Lease {
     pub(crate) fn audio_status(&self, audio: super::super::audio::Status) {
         self.modify_primary(|state| state.status.audio = audio);
     }
+    #[cfg(windows)]
     /// Clipboard sync for this participant. It writes the host clipboard,
     /// so it needs `control` besides `clipboard` (files also `files`); with
     /// several participants only the holder of the control token syncs, so
@@ -562,6 +563,7 @@ impl Lease {
             }
         }
     }
+    #[cfg(windows)]
     /// Manual clipboard copy (CLIPBOARD v2 `Pull`, §8.2): any participant
     /// holding `clipboard`, within this host's clipboard switches, whether or
     /// not it currently controls; files also need `files`.
@@ -633,6 +635,7 @@ impl Lease {
             && self.granted(farwing_protocol::caps::DIAGNOSTICS)
             && !self.handle.guest
     }
+    #[cfg(windows)]
     pub(crate) fn file_scope(&self) -> String {
         let state = lock(&self.handle.ownership);
         let device = match self.participant.and_then(|key| state.participants.get(&key)) {
@@ -645,6 +648,7 @@ impl Lease {
         };
         format!("{}:{}", self.handle.scope, device)
     }
+    #[cfg(windows)]
     pub(crate) fn file_notices(
         &self,
         updates: Vec<crate::features::file_transfer::host::notices::Notice>,
@@ -684,9 +688,11 @@ impl Lease {
             }
         }
     }
+    #[cfg(windows)]
     pub(crate) fn file_status(&self, status: super::super::files::Status) {
         self.modify_primary(|s| s.status.files = status);
     }
+    #[cfg(windows)]
     pub(crate) fn clipboard_status(&self, status: super::super::clipboard::Status) {
         self.modify_primary(|s| s.status.clipboard = status);
     }

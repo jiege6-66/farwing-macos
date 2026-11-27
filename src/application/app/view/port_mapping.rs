@@ -2,6 +2,7 @@ use super::*;
 use crate::i18n::t;
 
 impl DeviceCenterApp {
+    #[cfg(windows)]
     pub(in crate::application::app) fn open_file_transfer(&mut self, id: String) {
         if self.logout_pending {
             return;

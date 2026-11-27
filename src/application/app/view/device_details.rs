@@ -6,6 +6,7 @@ enum Glyph {
     Headphones,
     Camera,
     PortMapping,
+    #[cfg(windows)]
     Files,
     Diagnostics,
     Power,
@@ -337,6 +338,7 @@ fn paint_glyph(p: &egui::Painter, r: egui::Rect, g: Glyph, color: Color32) {
         }
         Glyph::PortMapping => crate::ui::controls::paint_port_mapping_icon(p, r, color),
         Glyph::Diagnostics => crate::ui::controls::paint_file_icon(p, r, color, false),
+        #[cfg(windows)]
         Glyph::Files => crate::ui::controls::paint_file_icon(p, r, color, true),
         Glyph::Edit => paint_icon(p, r, Icon::Edit, color),
         Glyph::System => {
@@ -492,6 +494,7 @@ impl DeviceCenterApp {
         let blocker = self.blocker();
         let reason = blocker.map(|b| b.reason());
         let mut ports = false;
+        #[cfg(windows)]
         let mut files = false;
         let mut diagnostics = false;
         let controller_id = self
@@ -507,7 +510,10 @@ impl DeviceCenterApp {
                     list.current_device.device_id != id && list.with_capability(&id, cap).is_ok()
                 })
         };
+        #[cfg(windows)]
         let has_files = holds(farwing_protocol::caps::FILES);
+        #[cfg(not(windows))]
+        let has_files = false; // No file button contributing to the row height.
         let has_ports = holds(farwing_protocol::caps::PORTS);
         let has_diagnostics = holds(farwing_protocol::caps::DIAGNOSTICS)
             && device.platform == farwing_protocol::Platform::Windows;
@@ -797,8 +803,12 @@ impl DeviceCenterApp {
             let power_count = if has_power { power_actions.len() } else { 0 };
             // Row order: power, ports, files, diagnostics, audio only.
             let ports_at = power_count;
+            #[cfg(windows)]
             let files_at = ports_at + usize::from(has_ports);
+            #[cfg(windows)]
             let diagnostics_at = files_at + usize::from(has_files);
+            #[cfg(not(windows))]
+            let diagnostics_at = ports_at + usize::from(has_ports);
             let viewing_at = diagnostics_at + usize::from(row_diagnostics);
             let camera_at = viewing_at + usize::from(viewing);
             let action_count = camera_at + usize::from(has_camera);
@@ -833,6 +843,7 @@ impl DeviceCenterApp {
                     }
                 }
             }
+            #[cfg(windows)]
             if has_files {
                 let file_rect = egui::Rect::from_min_size(
                     at(pad + files_at as f32 * (button_w + gap), power_y),
@@ -1115,6 +1126,7 @@ impl DeviceCenterApp {
         if ports {
             self.open_port_mapping(id.clone());
         }
+        #[cfg(windows)]
         if files {
             self.open_file_transfer(id.clone());
         }

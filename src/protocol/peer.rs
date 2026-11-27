@@ -247,8 +247,11 @@ pub(crate) fn controller_features() -> BTreeMap<String, u32> {
         feature::PEN,
         feature::DISPLAY_CONFIG,
         feature::DISPLAY_VIRTUAL,
+        #[cfg(windows)]
         feature::CLIPBOARD,
+        #[cfg(windows)]
         feature::CLIPBOARD_FILES,
+        #[cfg(windows)]
         feature::FILES,
         feature::CURSOR_PARTICIPANTS,
     ]);
@@ -285,8 +288,11 @@ fn host_static_features() -> BTreeMap<String, u32> {
     set(&[
         feature::DISPLAY_CONFIG,
         feature::DISPLAY_VIRTUAL,
+        #[cfg(windows)]
         feature::CLIPBOARD,
+        #[cfg(windows)]
         feature::CLIPBOARD_FILES,
+        #[cfg(windows)]
         feature::FILES,
         feature::CURSOR_PARTICIPANTS,
         feature::VIDEO_RECOVERY,
@@ -363,6 +369,24 @@ pub(crate) fn decode_hello(bytes: &[u8]) -> Result<Option<ReceivedHello>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(windows))]
+    #[test]
+    fn controller_omits_clipboard_and_files_without_backends() {
+        let features = controller_features();
+        for name in [feature::CLIPBOARD, feature::CLIPBOARD_FILES, feature::FILES] {
+            assert!(!features.contains_key(name), "unexpected feature: {name}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn controller_advertises_clipboard_and_files() {
+        let features = controller_features();
+        for name in [feature::CLIPBOARD, feature::CLIPBOARD_FILES, feature::FILES] {
+            assert_eq!(features.get(name), Some(&1), "missing feature: {name}");
+        }
+    }
 
     #[test]
     fn fragments_reassemble_in_order_and_interleaved() {

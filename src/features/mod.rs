@@ -2,8 +2,11 @@
 
 pub(crate) mod chat;
 pub(crate) mod voice;
+#[cfg(windows)]
 pub(crate) mod clipboard;
+#[cfg(windows)]
 pub(crate) mod drag_drop;
+// Host status IPC still carries transfer notices on every platform.
 pub(crate) mod file_transfer;
 pub(crate) mod host;
 pub(crate) mod network_control;

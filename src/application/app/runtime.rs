@@ -313,6 +313,7 @@ pub(super) async fn gui_worker_loop(
                         }
                     }
                 }
+                #[cfg(windows)]
                 GuiCommand::Files {
                     generation,
                     device,

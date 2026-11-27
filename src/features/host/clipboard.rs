@@ -1,20 +1,30 @@
 //! Clipboard permission and channel ownership (CLIPBOARD v2 on the session
 //! channel, its `TRANSFER`/`FLOW` and native drag data on the bulk channel).
 //! Native work never runs on media/input threads.
+#[cfg(windows)]
 pub(crate) mod agent;
+#[cfg(windows)]
 mod frame;
 
+#[cfg(windows)]
 use crate::features::clipboard::Clipboard;
+#[cfg(windows)]
 use crate::i18n::t;
+#[cfg(windows)]
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
+#[cfg(windows)]
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
+#[cfg(windows)]
 use std::time::Duration;
+#[cfg(windows)]
 use tokio::sync::mpsc;
+#[cfg(windows)]
 use tokio_util::sync::CancellationToken;
+#[cfg(windows)]
 use webrtc::data_channel::RTCDataChannel;
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,8 +49,10 @@ pub(crate) struct Status {
     pub dragging: bool,
 }
 
+#[cfg(windows)]
 #[derive(Clone, Default)]
 pub(crate) struct Receiver(Arc<Mutex<Inbox>>);
+#[cfg(windows)]
 #[derive(Default)]
 struct Inbox {
     generation: u64,
@@ -52,7 +64,9 @@ struct Inbox {
 }
 /// Frames queued towards the clipboard backend. A stream's sender stays
 /// within the credit it was granted, so a full window of chunks fits.
+#[cfg(windows)]
 pub(super) const INBOX: usize = 2048;
+#[cfg(windows)]
 impl Receiver {
     /// Negotiated capability, independent of the initial audio/file/view purpose.
     pub fn bind_file(&self, channel: &Arc<RTCDataChannel>) {
@@ -112,6 +126,7 @@ impl Receiver {
 }
 
 /// A backend exists only for the current TEXT binding; old queues never migrate to a new channel.
+#[cfg(windows)]
 pub(super) async fn run(
     receiver: Receiver,
     mut routes: tokio::sync::watch::Receiver<super::peer::ReportRoutes>,
@@ -169,6 +184,7 @@ pub(super) async fn run(
     lease.clipboard_status(Status::default());
 }
 
+#[cfg(windows)]
 async fn binding(
     receiver: &Receiver,
     routes: &mut tokio::sync::watch::Receiver<super::peer::ReportRoutes>,
@@ -291,6 +307,7 @@ async fn binding(
 
 /// Writes clipboard and drag stream data on the bulk channel through its
 /// shared writer gate.
+#[cfg(windows)]
 async fn bulk(
     receiver: Receiver,
     lease: super::Lease,
@@ -332,6 +349,7 @@ async fn bulk(
     }
 }
 
+#[cfg(windows)]
 pub(super) fn snapshot(clipboard: &Clipboard) -> Status {
     let state = clipboard.snapshot();
     Status {

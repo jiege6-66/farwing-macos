@@ -17,6 +17,7 @@ impl StreamControlHandle {
                 && !state.annotation.enabled
                 && !state.annotation.toggling();
             self.microphone.disconnect();
+            #[cfg(windows)]
             self.clipboard.suspend();
             state.annotation.disconnect();
             state.cursor_sync_needed = false;
@@ -237,21 +238,27 @@ impl StreamControlHandle {
         if !state.viewing_enabled || self.microphone.needs_cleanup() {
             self.disable_microphone_locked(state);
         }
-        // The exchange runs whenever the session is up (manual "获取被控剪贴板"
-        // works in view mode too); automatic sync needs control.
-        let clipboard_ready = state.viewing_enabled
-            && state.hello_answered
-            && state.text_channel_open
-            && state.peer.has(crate::protocol::peer::feature::CLIPBOARD);
-        self.clipboard.policy(
-            clipboard_ready,
-            clipboard_ready
-                && state.control_channel_open
-                && state.mouse_transport_connected
-                && mode != MouseMode::View,
-            state.peer.has(crate::protocol::peer::feature::CLIPBOARD_FILES)
-                && state.clipboard_files_allowed,
-        );
+        #[cfg(windows)]
+        {
+            // The exchange runs whenever the session is up (manual "获取被控剪贴板"
+            // works in view mode too); automatic sync needs control.
+            let clipboard_ready = state.viewing_enabled
+                && state.hello_answered
+                && state.text_channel_open
+                && state.peer.has(crate::protocol::peer::feature::CLIPBOARD);
+            self.clipboard.policy(
+                clipboard_ready,
+                clipboard_ready
+                    && state.control_channel_open
+                    && state.mouse_transport_connected
+                    && mode != MouseMode::View,
+                state
+                    .peer
+                    .has(crate::protocol::peer::feature::CLIPBOARD_FILES)
+                    && state.clipboard_files_allowed,
+            );
+        }
+        #[cfg(windows)]
         self.drag_drop.enable(
             state.viewing_enabled
                 && state.hello_answered

@@ -36,6 +36,7 @@ pub(crate) fn viewer_fullscreen_handle(ui: &mut egui::Ui) -> (egui::Response, eg
 
 #[derive(Clone, Copy)]
 pub(crate) enum ViewerCaptionIcon {
+    #[cfg(windows)]
     Plugins,
     Annotation,
     OneToOne,
@@ -187,6 +188,7 @@ fn paint_caption_icon(
             super::AnnotationIcon::Pen,
             color,
         ),
+        #[cfg(windows)]
         ViewerCaptionIcon::Plugins => crate::plugins::paint_plugin_icon(painter, rect, color),
         ViewerCaptionIcon::OneToOne => {
             for (x, y) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {

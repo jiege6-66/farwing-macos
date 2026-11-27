@@ -71,6 +71,7 @@ pub(crate) enum Step {
     Wheel { dy: i32, dx: i32 },
     System(SystemCommand),
     Sleep(Duration),
+    #[cfg(windows)]
     Pull,
 }
 
@@ -333,6 +334,7 @@ fn parse_line(line: &str, allow_disruptive: bool) -> Result<Option<Step>> {
             Step::System(command)
         }
         "sleep" => Step::Sleep(Duration::from_millis(number(words.next(), "毫秒数")?)),
+        #[cfg(windows)]
         "pull" => Step::Pull,
         other => bail!("未知命令 {other}"),
     };
@@ -373,6 +375,7 @@ impl std::fmt::Display for Step {
             Self::Wheel { dy, dx } => write!(f, "wheel dy={dy} dx={dx}"),
             Self::System(command) => write!(f, "system {command:?}"),
             Self::Sleep(duration) => write!(f, "sleep {} ms", duration.as_millis()),
+            #[cfg(windows)]
             Self::Pull => write!(f, "pull"),
         }
     }
@@ -386,6 +389,7 @@ pub(crate) struct Options {
 /// Runs a parsed script on an established session.
 pub(crate) struct Runner {
     input: RemoteInput,
+    #[cfg(windows)]
     exchange: crate::features::clipboard::Clipboard,
     screen: i32,
     hold: Duration,
@@ -396,7 +400,7 @@ impl Runner {
     /// check that the host granted it.
     pub(crate) async fn start(
         handle: crate::features::stream_control::StreamControlHandle,
-        exchange: crate::features::clipboard::Clipboard,
+        #[cfg(windows)] exchange: crate::features::clipboard::Clipboard,
         options: &Options,
     ) -> Result<Self> {
         let input = handle.mouse().clone();
@@ -478,6 +482,7 @@ impl Runner {
         Ok(Self {
             screen: screen.id,
             input,
+            #[cfg(windows)]
             exchange,
             hold: options.hold,
         })
@@ -588,6 +593,7 @@ impl Runner {
                 self.flush().await?;
             }
             Step::Sleep(duration) => tokio::time::sleep(*duration).await,
+            #[cfg(windows)]
             Step::Pull => {
                 let exchange = self.exchange.clone();
                 let text = tokio::task::spawn_blocking(move || pull_text(&exchange))
@@ -605,6 +611,7 @@ impl Runner {
     }
 }
 
+#[cfg(windows)]
 /// The host clipboard as text, through `Pull` (§8.2).
 fn pull_text(exchange: &crate::features::clipboard::Clipboard) -> Result<String> {
     let (before, _) = exchange
@@ -657,6 +664,7 @@ mod tests {
         }
     }
 
+    #[cfg(windows)]
     #[test]
     fn script_parses_every_step() {
         let script = "\

@@ -2,17 +2,28 @@
 //! typed requests on the session channel, file data as `TRANSFER`/`FLOW` on
 //! the bulk channel.
 pub(crate) mod host;
+#[cfg(windows)]
 pub(crate) mod model;
+#[cfg(windows)]
 mod storage;
+#[cfg(windows)]
 pub(crate) use storage::Store;
+#[cfg(windows)]
 pub(crate) mod service;
+#[cfg(windows)]
 mod tasks;
+#[cfg(windows)]
 pub(crate) mod ui;
+#[cfg(windows)]
 pub(crate) mod wire;
 
+#[cfg(windows)]
 use anyhow::{Context, Result, ensure};
+#[cfg(windows)]
 use bytes::Bytes;
+#[cfg(windows)]
 use model::FileEntry;
+#[cfg(windows)]
 use std::{
     collections::HashMap,
     sync::{
@@ -21,27 +32,37 @@ use std::{
     },
     time::Duration,
 };
+#[cfg(windows)]
 use tokio::sync::{Notify, mpsc, oneshot};
+#[cfg(windows)]
 use tokio_util::sync::CancellationToken;
+#[cfg(windows)]
 use webrtc::data_channel::RTCDataChannel;
 
+#[cfg(windows)]
 use crate::i18n::t;
+#[cfg(windows)]
 use crate::transport::transfer::{Chunk, Credit, INITIAL_WINDOW, Window};
+#[cfg(windows)]
 use wire::{Body, Frame};
 
+#[cfg(windows)]
 pub(crate) fn lock<T>(v: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     v.lock().unwrap_or_else(|e| e.into_inner())
 }
 /// How long a request waits for its response.
+#[cfg(windows)]
 pub(crate) const TIMEOUT: Duration = Duration::from_secs(60);
 
 /// What arrives for a running transfer.
+#[cfg(windows)]
 pub(crate) enum Inbound {
     Chunk(Chunk),
     ItemDone(wire::ItemDone),
 }
 
 /// One transfer stream of this connection.
+#[cfg(windows)]
 struct Stream {
     inbound: mpsc::UnboundedSender<Inbound>,
     /// Upload: what the host allows us to send.
@@ -53,6 +74,7 @@ struct Stream {
     fault: Mutex<Option<String>>,
 }
 
+#[cfg(windows)]
 impl Stream {
     fn fail(&self, message: impl Into<String>) {
         lock(&self.fault).get_or_insert_with(|| message.into());
@@ -62,6 +84,7 @@ impl Stream {
 }
 
 /// A registered transfer; unregisters on drop.
+#[cfg(windows)]
 pub(crate) struct Registration {
     pub id: u32,
     stream: Arc<Stream>,
@@ -69,12 +92,14 @@ pub(crate) struct Registration {
     pub inbound: mpsc::UnboundedReceiver<Inbound>,
 }
 
+#[cfg(windows)]
 impl Drop for Registration {
     fn drop(&mut self) {
         lock(&self.transport.streams).remove(&self.id);
     }
 }
 
+#[cfg(windows)]
 impl Registration {
     /// Why the transfer stopped: a connection or protocol fault, else a pause.
     pub(crate) fn failure(&self) -> String {
@@ -90,6 +115,7 @@ impl Registration {
     }
 }
 
+#[cfg(windows)]
 #[derive(Default)]
 pub(crate) struct Transport {
     session: Mutex<Weak<RTCDataChannel>>,
@@ -107,13 +133,16 @@ pub(crate) struct Transport {
 }
 
 /// Removes an unanswered request when its waiter goes away.
+#[cfg(windows)]
 struct Waiting<'a>(&'a Transport, u32);
+#[cfg(windows)]
 impl Drop for Waiting<'_> {
     fn drop(&mut self) {
         lock(&self.0.pending).remove(&self.1);
     }
 }
 
+#[cfg(windows)]
 impl Transport {
     pub(crate) fn allowed(&self) -> bool {
         self.permission.load(Ordering::Acquire) != 1

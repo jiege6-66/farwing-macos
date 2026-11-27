@@ -76,6 +76,7 @@ struct Published {
 #[derive(Clone, Default)]
 pub(super) struct ReportRoutes {
     pub(super) text: Option<std::sync::Weak<RTCDataChannel>>,
+    #[cfg(windows)]
     pub(super) clipboard: i32,
     control: Option<std::sync::Weak<RTCDataChannel>>,
     handshake_complete: bool,
@@ -89,10 +90,14 @@ impl ReportRoutes {
     ) -> bool {
         let opened = received.handshake_complete && !self.handshake_complete;
         self.handshake_complete |= received.handshake_complete;
+        #[cfg(windows)]
         if let Some(level) = received.clipboard {
             self.clipboard = level;
         }
+        #[cfg(windows)]
         let changed = opened || received.refresh_state || received.clipboard.is_some();
+        #[cfg(not(windows))]
+        let changed = opened || received.refresh_state;
         if changed {
             self.revision = self.revision.wrapping_add(1);
         }
@@ -146,8 +151,8 @@ impl Peer {
         stream: farwing_protocol::session::StreamSettings,
         negotiated: Arc<super::format::Negotiated>,
         deferred: Option<screens::Deferred>,
-        clipboard_level: i32,
-        file_capabilities: crate::features::file_transfer::host::Capabilities,
+        #[cfg(windows)] clipboard_level: i32,
+        #[cfg(windows)] file_capabilities: crate::features::file_transfer::host::Capabilities,
         data_only: bool,
         forwarding: Option<(String, bool, bool)>,
         camera_only: bool,
@@ -516,6 +521,7 @@ impl Peer {
             }));
         let kcp = core.control.clone();
         let (report_target, report_receiver) = tokio::sync::watch::channel(ReportRoutes {
+            #[cfg(windows)]
             clipboard: clipboard_level,
             ..Default::default()
         });
@@ -576,8 +582,11 @@ impl Peer {
             )),
             None => futures_util::future::Either::Right(std::future::ready(())),
         });
+        #[cfg(windows)]
         let clipboard_receiver = super::clipboard::Receiver::default();
+        #[cfg(windows)]
         let clipboard_screens = reports.clone();
+        #[cfg(windows)]
         let clipboard_worker = tokio::spawn(super::clipboard::run(
             clipboard_receiver.clone(),
             report_receiver.clone(),
@@ -597,8 +606,11 @@ impl Peer {
                 (screens, viewing)
             },
         ));
+        #[cfg(windows)]
         let files = super::files::Receiver::default();
+        #[cfg(windows)]
         files.capabilities(file_capabilities);
+        #[cfg(windows)]
         let file_worker = tokio::spawn(super::files::run(
             files.clone(),
             handle.clone(),
@@ -622,6 +634,7 @@ impl Peer {
             recovery: reports.recovery.clone(),
             forwarding: forwarding.clone(),
             membership: membership.clone(),
+            #[cfg(windows)]
             files: files.clone(),
             report_target: report_target.clone(),
             kcp: kcp.clone(),
@@ -634,9 +647,11 @@ impl Peer {
         let channel_input = input.receiver();
         let channel_microphone = microphone.receiver();
         let channel_audio = audio.clone();
+        #[cfg(windows)]
         let channel_files = files.clone();
         let channel_ports = ports.clone();
         let channel_annotation = annotation.clone();
+        #[cfg(windows)]
         let channel_clipboard = clipboard_receiver.clone();
         let channel_control = control_receiver.clone();
         let channel_diagnostics = crate::diagnostics::remote::Host::start(
@@ -652,7 +667,9 @@ impl Peer {
             let input = channel_input.clone();
             let microphone = channel_microphone.clone();
             let audio = channel_audio.clone();
+            #[cfg(windows)]
             let clipboard = channel_clipboard.clone();
+            #[cfg(windows)]
             let files = channel_files.clone();
             let ports = channel_ports.clone();
             let annotation = channel_annotation.clone();
@@ -668,7 +685,9 @@ impl Peer {
                     input,
                     microphone,
                     audio,
+                    #[cfg(windows)]
                     clipboard,
+                    #[cfg(windows)]
                     files,
                     ports,
                     annotation,
@@ -803,7 +822,9 @@ impl Peer {
                     cursor,
                     participants_worker,
                     forward_worker,
+                    #[cfg(windows)]
                     clipboard_worker,
+                    #[cfg(windows)]
                     file_worker,
                     ports_worker,
                     annotation_worker,

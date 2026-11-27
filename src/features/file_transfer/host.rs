@@ -1,34 +1,47 @@
 //! Authorized host side of FILE v2. Disk work lives in the user's executor
 //! (`agent`); the network owner only moves complete frames in and out.
+#[cfg(windows)]
 pub(crate) mod agent;
+#[cfg(windows)]
 mod filesystem;
 pub(crate) mod notices;
+#[cfg(windows)]
 mod transfer;
 
+#[cfg(windows)]
 use super::{
     model::FileInfo,
     storage,
     wire::{self, Body, Failure, Frame, code},
 };
+#[cfg(windows)]
 use crate::i18n::t;
+#[cfg(windows)]
 use crate::transport::transfer::{Chunk, Credit, INITIAL_WINDOW, Window};
+#[cfg(windows)]
 use anyhow::{Context, Result, ensure};
+#[cfg(windows)]
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
+#[cfg(windows)]
 use tokio::sync::{Notify, mpsc};
+#[cfg(windows)]
 use tokio_util::sync::CancellationToken;
 
 /// Largest frame the executor accepts or emits.
+#[cfg(windows)]
 const MAX_FRAME: usize = farwing_protocol::limits::MAX_PEER_FRAME;
 
 /// What the controller declared about file transfer in its `HELLO`.
+#[cfg(windows)]
 #[derive(Clone, Copy, PartialEq, Eq, prost::Message)]
 pub(crate) struct Capabilities {
     #[prost(bool, tag = "1")]
     pub files: bool,
 }
+#[cfg(windows)]
 impl Capabilities {
     /// Capabilities of a peer that declared (or not) the `files` feature.
     pub fn from_feature(files: bool) -> Self {
@@ -37,6 +50,7 @@ impl Capabilities {
 }
 
 /// A complete outgoing frame of the executor.
+#[cfg(windows)]
 #[derive(Clone, prost::Message)]
 pub(crate) struct Packet {
     #[prost(bytes = "vec", tag = "1")]
@@ -45,6 +59,7 @@ pub(crate) struct Packet {
     #[prost(bool, tag = "2")]
     pub bulk: bool,
 }
+#[cfg(windows)]
 impl Packet {
     fn session(data: Vec<u8>) -> Self {
         Self { data, bulk: false }
@@ -56,12 +71,14 @@ impl Packet {
 
 /// Whether `bytes` is a file-transfer frame (`FILE`, or `TRANSFER`/`FLOW` of
 /// a file stream).
+#[cfg(windows)]
 pub(crate) fn claims(bytes: &[u8]) -> bool {
     wire::claims(bytes)
 }
 
 /// Whether an outgoing packet reports a failure; those still reach a
 /// controller whose permission was just revoked.
+#[cfg(windows)]
 pub(crate) fn is_failure(packet: &Packet) -> bool {
     use crate::protocol::peer::FrameType;
     let Ok((header, body)) = crate::protocol::peer::decode(&packet.data) else {
@@ -79,6 +96,7 @@ pub(crate) fn is_failure(packet: &Packet) -> bool {
 }
 
 /// The failure code of `error` for the controller.
+#[cfg(windows)]
 pub(super) fn failure(error: &anyhow::Error) -> Failure {
     let message = format!("{error:#}");
     if let Some(failure) = error.downcast_ref::<Failure>() {
@@ -107,6 +125,7 @@ pub(super) fn failure(error: &anyhow::Error) -> Failure {
 
 /// A refusal for a request frame the executor cannot take (permission
 /// gone, no user session, malformed); nothing for other frames.
+#[cfg(windows)]
 pub(crate) fn reject(bytes: &[u8], failure: &Failure) -> Vec<Packet> {
     let Ok(Some(Frame::File(header, _))) = wire::classify(bytes) else {
         return Vec::new();
@@ -125,10 +144,12 @@ pub(crate) fn reject(bytes: &[u8], failure: &Failure) -> Vec<Packet> {
 }
 
 /// Sends of one transfer task.
+#[cfg(windows)]
 #[derive(Clone)]
 struct Output {
     output: mpsc::Sender<Packet>,
 }
+#[cfg(windows)]
 impl Output {
     async fn send(&self, packet: Packet) -> Result<()> {
         ensure!(packet.data.len() <= MAX_FRAME, "{}", t().features.transfer_response_too_large);
@@ -155,6 +176,7 @@ impl Output {
 }
 
 /// What the dispatcher hands a running transfer.
+#[cfg(windows)]
 enum Event {
     /// `UploadStart` (offsets) or `DownloadStart` (plans) with its request ID.
     Start(u32, Body),
@@ -162,6 +184,7 @@ enum Event {
 }
 
 /// Shared state of one running transfer.
+#[cfg(windows)]
 struct Shared {
     /// Download: what the controller allows us to send.
     credit: Mutex<Credit>,
@@ -175,6 +198,7 @@ struct Shared {
     stop: CancellationToken,
 }
 
+#[cfg(windows)]
 struct Active {
     generation: u64,
     key: String,
@@ -184,6 +208,7 @@ struct Active {
     shared: Arc<Shared>,
 }
 
+#[cfg(windows)]
 pub(crate) struct Engine {
     journal: notices::Journal,
     store: Arc<filesystem::Store>,
@@ -195,6 +220,7 @@ pub(crate) struct Engine {
     stop: CancellationToken,
 }
 
+#[cfg(windows)]
 impl Engine {
     pub fn new(
         scope: &str,
@@ -474,12 +500,14 @@ impl Engine {
     }
 }
 
+#[cfg(windows)]
 impl Drop for Engine {
     fn drop(&mut self) {
         self.stop.cancel();
     }
 }
 
+#[cfg(windows)]
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -2,6 +2,7 @@
 use super::*;
 
 impl Record {
+    #[cfg(windows)]
     pub(super) fn file(&mut self, notice: &crate::features::file_transfer::host::notices::Notice) {
         use crate::features::file_transfer::host::notices as n;
         use farwing_protocol::api::{FileOutcome, FileRecord, HostReport};

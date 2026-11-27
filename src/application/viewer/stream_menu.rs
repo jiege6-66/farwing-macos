@@ -71,6 +71,7 @@ pub(super) struct StreamControlUi {
     display: display_menu::DisplayMenu,
     pub(super) local_error: Option<String>,
     format_confirm: Option<(i32, StreamControlSettings)>,
+    #[cfg(windows)]
     /// A running "Get remote clipboard": the number of formats or the error.
     clipboard_pull: Option<std::sync::Arc<std::sync::Mutex<Option<Result<usize, String>>>>>,
 }
@@ -1139,6 +1140,7 @@ crate::ui::controls::observe_notice(ui.ctx(), "audio-output-disconnected", t().v
                                 if switch_row(ui, t().viewer.share_pointer, &mut share_pointer).changed() {
                                     handle.set_share_pointer(share_pointer);
                                 }
+                                #[cfg(windows)]
                                 let clipboard = handle.clipboard();
                                 let input=handle.microphone().selected_input();
                                 let devices=handle.microphone().input_devices();
@@ -1157,72 +1159,75 @@ crate::ui::controls::observe_notice(ui.ctx(), "audio-output-disconnected", t().v
                                     }
                                     if mic.error.is_some() && menu_row(ui,t().viewer.retry_microphone,"",None,true,false).clicked() {handle.microphone().retry();}
                                 }
-                                let clip = clipboard.snapshot();
-                                let clipboard_granted = granted(handle, farwing_protocol::caps::CLIPBOARD);
-                                // Sync writes the host clipboard: it also needs control.
-                                let sync_lacking = lacking(
-                                    handle,
-                                    &[farwing_protocol::caps::CLIPBOARD, farwing_protocol::caps::CONTROL],
-                                );
-                                let mut enabled = clip.enabled && sync_lacking.is_none();
-                                let sync = ui
-                                    .add_enabled_ui(sync_lacking.is_none(), |ui| switch_row(ui, t().viewer.clipboard_sync, &mut enabled))
-                                    .inner;
-                                let sync = match sync_lacking {
-                                    None => sync,
-                                    Some(cap) => sync.on_disabled_hover_text(missing(cap)),
-                                };
-                                if sync.changed() {
-                                    if let Err(error) = handle.set_clipboard_enabled(enabled) {
-                                        state.local_error = Some(error.to_string());
-                                    }
-                                }
-                                if enabled {
-                                    let files_granted = granted(handle, farwing_protocol::caps::FILES);
-                                    let mut files = clip.files && files_granted;
-                                    let copy = ui
-                                        .add_enabled_ui(files_granted, |ui| switch_row(ui, t().viewer.file_copy, &mut files))
+                                #[cfg(windows)]
+                                {
+                                    let clip = clipboard.snapshot();
+                                    let clipboard_granted = granted(handle, farwing_protocol::caps::CLIPBOARD);
+                                    // Sync writes the host clipboard: it also needs control.
+                                    let sync_lacking = lacking(
+                                        handle,
+                                        &[farwing_protocol::caps::CLIPBOARD, farwing_protocol::caps::CONTROL],
+                                    );
+                                    let mut enabled = clip.enabled && sync_lacking.is_none();
+                                    let sync = ui
+                                        .add_enabled_ui(sync_lacking.is_none(), |ui| switch_row(ui, t().viewer.clipboard_sync, &mut enabled))
                                         .inner;
-                                    let copy = if files_granted {
-                                        copy
-                                    } else {
-                                        copy.on_disabled_hover_text(missing(farwing_protocol::caps::FILES))
+                                    let sync = match sync_lacking {
+                                        None => sync,
+                                        Some(cap) => sync.on_disabled_hover_text(missing(cap)),
                                     };
-                                    if copy.changed() {
-                                        handle.set_clipboard_files(files);
+                                    if sync.changed() {
+                                        if let Err(error) = handle.set_clipboard_enabled(enabled) {
+                                            state.local_error = Some(error.to_string());
+                                        }
                                     }
-                                    crate::ui::controls::progress_notice(ui.ctx(),"clipboard-wait",t().viewer.clipboard_sync,(!clip.active && snapshot.mouse_mode != MouseMode::View).then_some(t().viewer.clipboard_waiting));
-crate::ui::controls::observe_notice(ui.ctx(), "clipboard-error", t().viewer.clipboard_sync_failed, crate::ui::controls::DialogIcon::Error, clip.error.as_deref());
-                                }
-                                // Manual copy of the host clipboard: also for participants
-                                // without automatic sync (view mode, not controlling).
-                                let pulling = state.clipboard_pull.is_some();
-                                let pull = menu_row(ui, t().viewer.pull_clipboard, if pulling { t().viewer.pulling } else { "" }, None, clipboard_granted && clip.active && !pulling, false);
-                                let pull = if clipboard_granted {
-                                    pull
-                                } else {
-                                    pull.on_disabled_hover_text(missing(farwing_protocol::caps::CLIPBOARD))
-                                };
-                                if pull.clicked() {
-                                    let result = std::sync::Arc::new(std::sync::Mutex::new(None));
-                                    state.clipboard_pull = Some(result.clone());
-                                    let clipboard = clipboard.clone();
-                                    let repaint = ctx.clone();
-                                    std::thread::spawn(move || {
-                                        let value = clipboard.pull().map_err(|e| e.to_string());
-                                        *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(value);
-                                        repaint.request_repaint();
-                                    });
-                                }
-                                let finished = state.clipboard_pull.as_ref().and_then(|r| r.lock().unwrap_or_else(|e| e.into_inner()).take());
-                                if let Some(result) = finished {
-                                    state.clipboard_pull = None;
-                                    match result {
-                                        Ok(_) => crate::ui::controls::notice(ui.ctx(), "clipboard-pull", t().viewer.pull_clipboard, crate::ui::controls::DialogIcon::Ready, t().viewer.copied_to_local_clipboard),
-                                        Err(error) => crate::ui::controls::notice(ui.ctx(), "clipboard-pull", t().viewer.pull_clipboard, crate::ui::controls::DialogIcon::Error, error),
+                                    if enabled {
+                                        let files_granted = granted(handle, farwing_protocol::caps::FILES);
+                                        let mut files = clip.files && files_granted;
+                                        let copy = ui
+                                            .add_enabled_ui(files_granted, |ui| switch_row(ui, t().viewer.file_copy, &mut files))
+                                            .inner;
+                                        let copy = if files_granted {
+                                            copy
+                                        } else {
+                                            copy.on_disabled_hover_text(missing(farwing_protocol::caps::FILES))
+                                        };
+                                        if copy.changed() {
+                                            handle.set_clipboard_files(files);
+                                        }
+                                        crate::ui::controls::progress_notice(ui.ctx(),"clipboard-wait",t().viewer.clipboard_sync,(!clip.active && snapshot.mouse_mode != MouseMode::View).then_some(t().viewer.clipboard_waiting));
+                                        crate::ui::controls::observe_notice(ui.ctx(), "clipboard-error", t().viewer.clipboard_sync_failed, crate::ui::controls::DialogIcon::Error, clip.error.as_deref());
                                     }
-                                } else if pulling {
-                                    ctx.request_repaint_after(std::time::Duration::from_millis(200));
+                                    // Manual copy of the host clipboard: also for participants
+                                    // without automatic sync (view mode, not controlling).
+                                    let pulling = state.clipboard_pull.is_some();
+                                    let pull = menu_row(ui, t().viewer.pull_clipboard, if pulling { t().viewer.pulling } else { "" }, None, clipboard_granted && clip.active && !pulling, false);
+                                    let pull = if clipboard_granted {
+                                        pull
+                                    } else {
+                                        pull.on_disabled_hover_text(missing(farwing_protocol::caps::CLIPBOARD))
+                                    };
+                                    if pull.clicked() {
+                                        let result = std::sync::Arc::new(std::sync::Mutex::new(None));
+                                        state.clipboard_pull = Some(result.clone());
+                                        let clipboard = clipboard.clone();
+                                        let repaint = ctx.clone();
+                                        std::thread::spawn(move || {
+                                            let value = clipboard.pull().map_err(|e| e.to_string());
+                                            *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(value);
+                                            repaint.request_repaint();
+                                        });
+                                    }
+                                    let finished = state.clipboard_pull.as_ref().and_then(|r| r.lock().unwrap_or_else(|e| e.into_inner()).take());
+                                    if let Some(result) = finished {
+                                        state.clipboard_pull = None;
+                                        match result {
+                                            Ok(_) => crate::ui::controls::notice(ui.ctx(), "clipboard-pull", t().viewer.pull_clipboard, crate::ui::controls::DialogIcon::Ready, t().viewer.copied_to_local_clipboard),
+                                            Err(error) => crate::ui::controls::notice(ui.ctx(), "clipboard-pull", t().viewer.pull_clipboard, crate::ui::controls::DialogIcon::Error, error),
+                                        }
+                                    } else if pulling {
+                                        ctx.request_repaint_after(std::time::Duration::from_millis(200));
+                                    }
                                 }
                                 let can_send = snapshot.ready
                                     && !snapshot.mouse_pending

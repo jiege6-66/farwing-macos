@@ -95,6 +95,7 @@ pub(crate) struct ConnectOptions {
     pub device_id: String,
     /// The controller accepts forwarded media only end-to-end encrypted.
     pub e2ee_only: bool,
+    #[cfg(windows)]
     features: std::collections::BTreeMap<String, u32>,
 }
 impl ConnectOptions {
@@ -112,22 +113,27 @@ impl ConnectOptions {
             device_id: String::new(),
             e2ee_only: wire.e2ee_only,
             // Every v2 controller is this build; its HELLO confirms the set.
+            #[cfg(windows)]
             features: crate::protocol::peer::controller_features(),
         }
     }
+    #[cfg(windows)]
     fn features(&self) -> crate::protocol::peer::PeerFeatures {
         crate::protocol::peer::PeerFeatures::new(self.features.clone())
     }
+    #[cfg(windows)]
     pub fn file_capabilities(&self) -> crate::features::file_transfer::host::Capabilities {
         crate::features::file_transfer::host::Capabilities::from_feature(
             self.features().has(crate::protocol::peer::feature::FILES),
         )
     }
+    #[cfg(windows)]
     pub fn clipboard_level(&self) -> i32 {
         clipboard_level(&self.features())
     }
 }
 
+#[cfg(windows)]
 /// Clipboard support of a peer: 0 none, 1 text and images, 2 also files.
 fn clipboard_level(features: &crate::protocol::peer::PeerFeatures) -> i32 {
     use crate::protocol::peer::feature;
@@ -152,7 +158,9 @@ pub(crate) struct Received {
     pub handshake_complete: bool,
     pub handshake_request: bool,
     pub refresh_state: bool,
+    #[cfg(windows)]
     pub clipboard: Option<i32>,
+    #[cfg(windows)]
     pub files: Option<crate::features::file_transfer::host::Capabilities>,
     pub media_active: Option<bool>,
 }
@@ -257,6 +265,7 @@ pub(crate) fn receive(bytes: &[u8]) -> Result<Received> {
         return Ok(Received::default());
     };
     let hello = &received.hello;
+    #[cfg(windows)]
     let features = received.features();
     tracing::debug!(
         response = received.response,
@@ -274,7 +283,9 @@ pub(crate) fn receive(bytes: &[u8]) -> Result<Received> {
                 received.request_id,
             )]
         },
+        #[cfg(windows)]
         clipboard: Some(clipboard_level(&features)),
+        #[cfg(windows)]
         files: Some(
             crate::features::file_transfer::host::Capabilities::from_feature(
                 features.has(crate::protocol::peer::feature::FILES),
@@ -284,6 +295,7 @@ pub(crate) fn receive(bytes: &[u8]) -> Result<Received> {
     })
 }
 
+#[cfg(windows)]
 /// Whether this host accepts files on the clipboard.
 pub(crate) fn clipboard_permission(enabled: bool) -> Vec<u8> {
     super::wire::push(SessionBody::ClipboardFiles(super::wire::ClipboardPermission {

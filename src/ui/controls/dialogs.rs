@@ -11,6 +11,7 @@ pub(crate) enum DialogIcon {
     Warning,
     Info,
     Edit,
+    #[cfg(windows)]
     Files,
 }
 
@@ -62,6 +63,7 @@ fn paint_dialog_icon(ui: &mut egui::Ui, rect: Rect, icon: DialogIcon) {
             line(vec2(0., -7.), vec2(5., -2.));
             line(vec2(-8., 8.), vec2(8., 8.));
         }
+        #[cfg(windows)]
         DialogIcon::Files => paint_file_icon(&p, rect, color, true),
         DialogIcon::Edit => {
             p.add(egui::Shape::closed_line(
