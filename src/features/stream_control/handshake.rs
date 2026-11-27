@@ -326,7 +326,7 @@ impl StreamControlHandle {
             if !(control_only && state.mouse.mode() != crate::features::remote_input::MouseMode::View) {
                 let labels = |list: &[&String]| {
                     list.iter()
-                        .map(|c| crate::application::app::friends::cap_label(c))
+                        .map(|c| crate::i18n::cap_label(c))
                         .collect::<Vec<_>>()
                         .join("、")
                 };

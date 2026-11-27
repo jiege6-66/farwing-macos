@@ -150,7 +150,7 @@ pub(in crate::application::viewer) fn lacking(
 
 /// Why something is unavailable: its permission was not granted.
 pub(in crate::application::viewer) fn missing(cap: &str) -> String {
-    (t().viewer.permission_missing)(crate::application::app::friends::cap_label(cap))
+    (t().viewer.permission_missing)(crate::i18n::cap_label(cap))
 }
 
 /// A bitrate in the quality menu: `1.5M`, `8M`, `22M`.

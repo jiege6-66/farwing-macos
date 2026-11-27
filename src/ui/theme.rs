@@ -13,12 +13,18 @@ pub const GREEN: Color32 = Color32::from_rgb(102, 207, 156);
 pub const AMBER: Color32 = Color32::from_rgb(238, 190, 111);
 pub const RED: Color32 = Color32::from_rgb(241, 125, 132);
 pub const DANGER_FILL: Color32 = Color32::from_rgb(161, 56, 67);
+#[cfg(windows)]
 pub const CONTROLLED_TITLE_BG: Color32 = Color32::from_rgb(85, 34, 43);
+#[cfg(windows)]
 pub const CONTROLLED_TITLE_LINE: Color32 = Color32::from_rgb(140, 59, 72);
+#[cfg(windows)]
 pub const CONTROLLED_TITLE_TEXT: Color32 = Color32::from_rgb(255, 235, 238);
+#[cfg(windows)]
 pub const CONTROLLED_TITLE_BRAND_MAX: f32 = 210.0;
+#[cfg(windows)]
 pub const CONTROLLED_TITLE_GAP: f32 = 12.0;
 pub const HOVER: Color32 = Color32::from_rgb(44, 54, 69);
+#[cfg(windows)]
 pub const WINDOW_BORDER: Color32 = Color32::from_rgb(78, 101, 139);
 pub const BORDER_FOCUS: Color32 = Color32::from_rgb(81, 107, 142);
 pub const SELECTED: Color32 = Color32::from_rgb(33, 51, 77);
@@ -31,35 +37,54 @@ pub const CONNECTION_WALLPAPER_DETAIL_DIM: u8 = 212;
 
 pub const BODY: f32 = 14.0;
 pub const COMPACT_TEXT: f32 = 13.0;
+#[cfg(windows)]
 pub const DIAGNOSTIC_POPUP_WIDTH: f32 = 320.0;
+#[cfg(windows)]
 pub const TASK_PROGRESS_HEIGHT: f32 = 3.0;
 pub const SMALL: f32 = 12.0;
 pub const TINY: f32 = 11.0;
 pub const ICON_STROKE: f32 = 1.35;
+#[cfg(windows)]
 pub const VIEWER_CAPTION_BUTTON: f32 = 30.0;
 pub const VIEWER_ACTIONS_WIDTH: f32 = 214.0;
 pub const VIEWER_FLOATING_WIDTH: f32 = 1100.0;
+#[cfg(windows)]
 pub const VIEWER_FULLSCREEN_HANDLE_HIT_SIZE: egui::Vec2 = egui::vec2(340.0, 14.0);
+#[cfg(windows)]
 pub const VIEWER_FULLSCREEN_HANDLE_SIZE: egui::Vec2 = egui::vec2(280.0, 4.0);
+#[cfg(windows)]
 pub const VIEWER_FULLSCREEN_HANDLE_CENTER_Y: f32 = 10.0;
+#[cfg(windows)]
 pub const SESSION_STATUS_WIDTH: f32 = 280.0;
 pub const INPUT_WARNING_WIDTH: f32 = 360.0;
 pub const INPUT_WARNING_MARGIN: f32 = 12.0;
+#[cfg(windows)]
 pub const NOTIFICATION_WIDTH: f32 = 380.0;
 pub const NOTIFICATION_MARGIN: f32 = 16.0;
+#[cfg(windows)]
 pub const NOTIFICATION_PADDING: egui::Margin = egui::Margin::symmetric(12, 10);
+#[cfg(windows)]
 pub const NOTIFICATION_GAP: f32 = 4.0;
+#[cfg(windows)]
 pub const NOTIFICATION_HEADER_HEIGHT: f32 = 20.0;
+#[cfg(windows)]
 pub const NOTIFICATION_ACTION_HEIGHT: f32 = 26.0;
+#[cfg(windows)]
 pub const NOTIFICATION_ACTION_GAP: f32 = 8.0;
+#[cfg(windows)]
 pub const NOTIFICATION_PROGRESS_HEIGHT: f32 = 4.0;
+#[cfg(windows)]
 pub const NOTIFICATION_MIN_HEIGHT: f32 = 80.0;
+#[cfg(windows)]
 pub const NOTIFICATION_MAX_HEIGHT: f32 = 520.0;
 pub const MICRO: f32 = 10.0;
 pub const SECTION: f32 = 16.0;
 pub const DIALOG_TITLE: f32 = 21.0;
+#[cfg(windows)]
 pub const UPDATE_DIALOG_WIDTH: f32 = 520.0;
+#[cfg(windows)]
 pub const MAINTENANCE_WINDOW_SIZE: [f32; 2] = [580.0, 340.0];
+#[cfg(windows)]
 pub const DEVICE_STATUS_SIZE: [f32; 2] = [106.0, 26.0];
 pub const REMOTE_UPGRADE_WIDTH: f32 = 408.0;
 pub const DIALOG_MARGIN: i8 = 20;
@@ -69,15 +94,20 @@ pub const DIALOG_HEADING: f32 = 18.0;
 pub const DIALOG_HEADER_GAP: f32 = 16.0;
 pub const DIALOG_ACTION_GAP: f32 = 20.0;
 pub const DIALOG_ACTION_WIDTH: f32 = 104.0;
+#[cfg(windows)]
 pub const RELEASE_NOTES_HEIGHT: f32 = 300.0;
 pub const TITLE: f32 = 25.0;
 /// Height of the logo's mark in the sidebar, sign-in card and loading page.
+#[cfg(windows)]
 pub const LOGO_SIDEBAR: f32 = 22.0;
+#[cfg(windows)]
 pub const LOGO_LOGIN: f32 = 32.0;
+#[cfg(windows)]
 pub const LOGO_LOADING: f32 = 44.0;
 pub const CONTROL_HEIGHT: f32 = 34.0;
 pub const INPUT_MARGIN: egui::Margin = egui::Margin::symmetric(12, 6);
 pub const INPUT_COMPACT_MARGIN: egui::Margin = egui::Margin::symmetric(8, 4);
+#[cfg(windows)]
 pub const MAPPING_WINDOW_SIZE: [f32; 2] = [920.0, 520.0];
 pub const FILES_WINDOW_SIZE: [f32; 2] = [1280.0, 820.0];
 pub const FILES_WINDOW_MIN: [f32; 2] = [940.0, 640.0];
@@ -95,20 +125,34 @@ pub const FILES_NAV_HEIGHT: f32 = 30.0;
 pub const FILES_NAV_GAP: f32 = 4.0;
 pub const FILES_PATH_INSET: f32 = 4.0;
 pub const FILES_BROWSER_HEADER: f32 = 144.0;
+#[cfg(windows)]
 pub const MAPPING_WINDOW_MIN: [f32; 2] = [880.0, 480.0];
+#[cfg(windows)]
 pub const MAPPING_MARGIN: i8 = 20;
+#[cfg(windows)]
 pub const MAPPING_ROW_HEIGHT: f32 = 72.0;
+#[cfg(windows)]
 pub const MAPPING_LINE_HEIGHT: f32 = 20.0;
+#[cfg(windows)]
 pub const MAPPING_TABLE_HEADER: f32 = 34.0;
+#[cfg(windows)]
 pub const MAPPING_DIALOG_WIDTH: f32 = 560.0;
+#[cfg(windows)]
 pub const MAPPING_EMPTY_HEIGHT: f32 = 202.0;
+#[cfg(windows)]
 pub const MAPPING_ENDPOINT_HEIGHT: f32 = 192.0;
+#[cfg(windows)]
 pub const SERVICE_SWITCH_SIZE: egui::Vec2 = egui::vec2(48.0, 26.0);
 pub const COMPACT_HEIGHT: f32 = 26.0;
+#[cfg(windows)]
 pub const DIAGNOSTICS_BODY_MIN_HEIGHT: f32 = 350.0;
+#[cfg(windows)]
 pub const DIAGNOSTICS_LABEL_WIDTH: f32 = 106.0;
+#[cfg(windows)]
 pub const DIAGNOSTICS_ROW_HEIGHT: f32 = 28.0;
+#[cfg(windows)]
 pub const DIAGNOSTICS_GAP: f32 = 10.0;
+#[cfg(windows)]
 pub const DIAGNOSTICS_ACTION_WIDTH: f32 = 112.0;
 pub const MENU_HEIGHT: f32 = 28.0;
 pub const MENU_GROUP_GAP: f32 = 8.0;
@@ -121,32 +165,43 @@ pub const PERFORMANCE_WIDTH: f32 = 540.0;
 pub const PERFORMANCE_LABEL_WIDTH: f32 = 102.0;
 pub const PERFORMANCE_ROW_HEIGHT: f32 = 44.0;
 pub const SCREEN_TAB_HEIGHT: f32 = 30.0;
+#[cfg(windows)]
 pub const WINDOW_TITLE_CONTENT_HEIGHT: f32 = 36.0;
 // The controls add 4 px at the right; together with the frame stroke this
 // matches the 7 px above/below a 30 px button in the 36 px caption content.
+#[cfg(windows)]
 pub const WINDOW_TITLE_MARGIN: egui::Margin = egui::Margin {
     left: 10,
     right: 2,
     top: 3,
     bottom: 3,
 };
+#[cfg(windows)]
 pub const WINDOW_TITLE_STROKE: f32 = 1.0;
+#[cfg(windows)]
 pub const WINDOW_CONTROLS_WIDTH: f32 = 106.0;
 pub const CONNECTION_CONTENT_WIDTH: f32 = 440.0;
 pub const CONNECTION_STAGE_WIDTH: f32 = 224.0;
 pub const CONNECTION_DETAIL_TIME_WIDTH: f32 = 64.0;
 pub const CONNECTION_DETAIL_TITLE_WIDTH: f32 = 160.0;
 pub const VIEWER_IDENTITY_MAX_WIDTH: f32 = 200.0;
+#[cfg(windows)]
 pub const WINDOW_LOGO_SIZE: f32 = 24.0;
 pub const VIEWER_IDENTITY_GAP: f32 = 16.0;
+#[cfg(windows)]
 pub const DEVICE_MENU_WIDTH: f32 = 248.0;
+#[cfg(windows)]
 pub const DEVICE_MENU_ROW_HEIGHT: f32 = 46.0;
+#[cfg(windows)]
 pub const DEVICE_MENU_ROW_GAP: f32 = 2.0;
 pub const SCREEN_TAB_MIN_WIDTH: f32 = 108.0;
 pub const SCREEN_TAB_MAX_WIDTH: f32 = 184.0;
 pub const CONTEXT_MENU_WIDTH: f32 = 248.0;
+#[cfg(windows)]
 pub const NAV_HEIGHT: f32 = 36.0;
+#[cfg(windows)]
 pub const SIDEBAR_WIDTH: f32 = 188.0;
+#[cfg(windows)]
 pub const ASSIST_SHARE_WIDTH: f32 = 112.0;
 pub const CONTROL_RADIUS: u8 = 5;
 pub const PANEL_RADIUS: u8 = 8;

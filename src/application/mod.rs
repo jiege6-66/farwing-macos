@@ -1,5 +1,7 @@
 //! Application ownership and module boundaries.
 
+// The native macOS device center arrives in M5.
+#[cfg(windows)]
 pub mod app;
 pub mod cli;
 pub(crate) mod dev_input;

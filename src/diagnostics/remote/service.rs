@@ -1,5 +1,5 @@
 //! One explicit diagnostic job per owned device. Uses a data-only shared lease.
-use super::{Controller, Snapshot, lock};
+use super::{Controller, controller::Snapshot, lock};
 use crate::{
     account::{api::DeviceInfo, client::AuthenticatedClient},
     media::ConnectionMediaOptions,

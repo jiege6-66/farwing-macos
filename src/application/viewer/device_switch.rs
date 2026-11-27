@@ -122,6 +122,7 @@ impl DeviceSwitcher {
         });
     }
 
+    #[cfg(windows)]
     pub(super) fn menu(&self, response: &egui::Response, window: WindowId) {
         if response.clicked() {
             self.refresh(&response.ctx);

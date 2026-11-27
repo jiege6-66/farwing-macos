@@ -42,11 +42,15 @@ pub(crate) fn lock<T>(value: &Mutex<T>) -> MutexGuard<'_, T> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+#[cfg(windows)]
+pub(crate) use access::Status;
 pub(crate) use access::{
     ParticipantLimit,
-    AccessRequest, ActiveEncoding, Handle, Lease, RemoteAction, SessionLease, Status,
+    AccessRequest, ActiveEncoding, Handle, Lease, RemoteAction, SessionLease,
 };
-pub(crate) use encoding_settings::{EncoderCodec, EncoderMode, EncodingSettings};
+#[cfg(windows)]
+pub(crate) use encoding_settings::EncoderCodec;
+pub(crate) use encoding_settings::{EncoderMode, EncodingSettings};
 
 pub(crate) fn enroll_settings(account: &str, device: &str) -> anyhow::Result<()> {
     settings::Store::new(account, device)?.enroll()

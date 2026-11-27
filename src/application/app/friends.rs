@@ -1,6 +1,7 @@
 //! Friends, friend requests and what each friend may do on this account's
 //! devices.
 use super::*;
+pub(crate) use crate::i18n::cap_label;
 use crate::i18n::t;
 use farwing_protocol::api::{Friend, FriendRequest, Grants, UserSummary};
 
@@ -113,28 +114,6 @@ pub(super) async fn execute(
             FriendResult::Done(t().app.permissions_saved.into())
         }
     })
-}
-
-/// Display label of a session capability.
-pub(crate) fn cap_label(cap: &str) -> &'static str {
-    use farwing_protocol::caps;
-    let text = &t().app;
-    match cap {
-        caps::VIEW => text.cap_view,
-        caps::CONTROL => text.cap_control,
-        caps::CLIPBOARD => text.cap_clipboard,
-        caps::FILES => text.cap_files,
-        caps::PORTS => text.cap_ports,
-        caps::POWER => text.cap_power,
-        caps::AUDIO => text.cap_audio,
-        caps::MICROPHONE => text.cap_microphone,
-        caps::DISPLAY => text.cap_display,
-        caps::DIAGNOSTICS => text.cap_diagnostics,
-        caps::ANNOTATION => text.cap_annotation,
-        caps::CAMERA => text.cap_camera,
-        caps::LISTEN => text.cap_listen,
-        _ => text.cap_unknown,
-    }
 }
 
 impl DeviceCenterApp {

@@ -109,6 +109,7 @@ pub(crate) fn paint(painter: &egui::Painter, rect: egui::Rect, art: Art, tint: e
 /// The mark and wordmark side by side, in the brand kit's proportions,
 /// starting at `left` and vertically centred on `center_y`. Returns the
 /// area drawn.
+#[cfg(windows)]
 pub(crate) fn paint_logo(
     painter: &egui::Painter,
     left: f32,
@@ -136,6 +137,7 @@ pub(crate) fn paint_logo(
 }
 
 /// Size of [`paint_logo`] for a mark this tall.
+#[cfg(windows)]
 pub(crate) fn logo_size(mark_height: f32) -> egui::Vec2 {
     let wordmark = mark_height * WORDMARK_HEIGHT;
     egui::vec2(
@@ -145,16 +147,21 @@ pub(crate) fn logo_size(mark_height: f32) -> egui::Vec2 {
 }
 
 // The horizontal lockup, relative to the mark's height.
+#[cfg(windows)]
 const LOGO_GAP: f32 = 0.283;
+#[cfg(windows)]
 const WORDMARK_HEIGHT: f32 = 0.985;
+#[cfg(windows)]
 const WORDMARK_TOP: f32 = 0.12;
 
+#[cfg(windows)]
 pub(crate) fn window_icon() -> winit::window::Icon {
     let icon = icon();
     winit::window::Icon::from_rgba(icon.rgba.clone(), icon.width, icon.height)
         .expect("embedded window icon dimensions")
 }
 
+#[cfg(windows)]
 pub(crate) fn set_taskbar_icon(window: &winit::window::Window) {
     use winit::platform::windows::WindowExtWindows;
     window.set_taskbar_icon(Some(window_icon()));

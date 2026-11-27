@@ -11,6 +11,7 @@ use clap::{Parser, Subcommand};
 use farwing::account::api;
 use farwing::account::client::AuthenticatedClient;
 use farwing::account::login;
+#[cfg(windows)]
 use farwing::application::app;
 use farwing::diagnostics::logging;
 use farwing::media;
@@ -127,6 +128,7 @@ enum Commands {
     #[cfg(windows)]
     #[command(hide = true)]
     PluginHost { manifest: PathBuf },
+    #[cfg(windows)]
     /// 打开完整图形设备中心
     Gui {
         #[arg(long)]
@@ -622,6 +624,7 @@ fn main() -> Result<()> {
         println!("1");
         return Ok(());
     }
+    #[cfg(windows)]
     let command = cli.command.unwrap_or(Commands::Gui {
         background: false,
         fps: None,
@@ -629,6 +632,15 @@ fn main() -> Result<()> {
         hardware_decode: None,
         transport: None,
     });
+    #[cfg(not(windows))]
+    let Some(command) = cli.command else {
+        // macOS has no device center until M5, when `gui` and the default GUI launch return.
+        use clap::CommandFactory as _;
+
+        Cli::command().print_help()?;
+        println!();
+        return Ok(());
+    };
 
     #[cfg(windows)]
     if let Commands::Notification { uri } = &command {
@@ -639,6 +651,7 @@ fn main() -> Result<()> {
         farwing::application::bootstrap::handoff();
         return Ok(());
     }
+    #[cfg(windows)]
     let _instance = if matches!(command, Commands::Gui { .. }) {
         match if matches!(
             command,
@@ -768,6 +781,7 @@ fn main() -> Result<()> {
 
         #[cfg(windows)]
         Commands::PluginHost { manifest } => farwing::plugins::host(&manifest),
+        #[cfg(windows)]
         Commands::Gui {
             background,
             fps,
@@ -1146,6 +1160,7 @@ fn main() -> Result<()> {
     if let Err(error) = &result {
         tracing::error!(target: "farwing", error = %format_args!("{error:#}"), "application stopped with an error");
     }
+    #[cfg(windows)]
     drop(_instance);
     #[cfg(windows)]
     if result.is_ok() && farwing::application::take_installed_handoff() {

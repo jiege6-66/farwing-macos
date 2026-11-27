@@ -3,35 +3,45 @@ use super::theme::{self, HOVER, LINE, MUTED, SURFACE, TEXT};
 use crate::i18n::t;
 use egui::{Color32, RichText, Stroke, vec2};
 mod audio_quality;
+#[cfg(windows)]
 mod diagnostics;
+#[cfg(windows)]
+pub(crate) use audio_quality::audio_quality;
 pub(crate) use audio_quality::{
-    audio_quality, audio_quality_segments, remote_audio_quality, remote_audio_quality_inline,
+    audio_quality_segments, remote_audio_quality, remote_audio_quality_inline,
 };
 mod dialogs;
+#[cfg(windows)]
 pub(crate) use diagnostics::{
     diagnostics_action, diagnostics_empty, diagnostics_label, diagnostics_row, diagnostics_table,
 };
+#[cfg(windows)]
 mod host_notice;
 mod inputs;
+#[cfg(windows)]
 pub(crate) use host_notice::host_notice;
 mod input_rate;
 pub(crate) use input_rate::input_rate_warning;
 mod notices;
 pub(crate) use inputs::{number_input, singleline};
 pub(crate) use notices::{
-    clear_notice, notice, notice_answer, notice_with_action, observe_form_notice, observe_notice,
-    observe_notice_action,
-    progress_notice, show_notices,
+    clear_notice, notice, notice_answer, notice_with_action, observe_notice, observe_notice_action,
+    progress_notice,
 };
+#[cfg(windows)]
+pub(crate) use notices::{observe_form_notice, show_notices};
 #[cfg(windows)]
 pub(crate) mod file_icons;
 #[cfg(windows)]
 pub(crate) mod files;
 pub(crate) use dialogs::{DialogAction, DialogIcon, dialog_actions, dialog_header};
+#[cfg(windows)]
 mod mapping;
 mod performance;
 mod updates;
+#[cfg(windows)]
 mod viewer_caption;
+#[cfg(windows)]
 pub(crate) use mapping::{
     MappingRow, MappingRowAction, mapping_empty, mapping_row, mapping_table_header,
 };
@@ -40,6 +50,7 @@ pub(crate) use performance::{
     performance_trace,
 };
 pub(crate) use updates::update_actions;
+#[cfg(windows)]
 pub(crate) use viewer_caption::{
     ViewerCaptionIcon, viewer_caption_button, viewer_fullscreen_handle, viewer_participants_button,
 };
@@ -52,6 +63,7 @@ pub const ACCENT: Color32 = theme::ACCENT;
 /// Preserve page IDs so each page retains independent scrolling state.
 /// A page's scrolling body. It runs to the bottom of the window; the end
 /// of its contents keeps a margin there.
+#[cfg(windows)]
 pub(crate) fn page_scroll(id: impl egui::AsIdSalt) -> egui::ScrollArea {
     egui::ScrollArea::vertical()
         .id_salt(id)
@@ -62,6 +74,7 @@ pub(crate) fn page_scroll(id: impl egui::AsIdSalt) -> egui::ScrollArea {
         })
 }
 
+#[cfg(windows)]
 pub(crate) fn paint_file_icon(p: &egui::Painter, r: egui::Rect, color: Color32, folder: bool) {
     let c = r.center();
     let s = Stroke::new(theme::ICON_STROKE, color);
@@ -88,6 +101,7 @@ pub(crate) fn paint_file_icon(p: &egui::Painter, r: egui::Rect, color: Color32, 
     p.add(egui::Shape::line(points, s));
 }
 
+#[cfg(windows)]
 pub(crate) fn device_status_badge(
     ui: &mut egui::Ui,
     rect: egui::Rect,
@@ -109,6 +123,7 @@ pub(crate) fn device_status_badge(
     badge.add(egui::Label::new(RichText::new(label).size(theme::SMALL).color(color)).truncate());
 }
 
+#[cfg(windows)]
 pub(crate) fn paint_port_mapping_icon(p: &egui::Painter, rect: egui::Rect, color: Color32) {
     let center = rect.center();
     let scale = rect.width().min(rect.height()) / 20.0;
@@ -134,6 +149,7 @@ pub(crate) fn paint_port_mapping_icon(p: &egui::Painter, rect: egui::Rect, color
 pub(crate) fn switch(ui: &mut egui::Ui, value: &mut bool) -> egui::Response {
     sized_switch(ui, value, vec2(34.0, 20.0))
 }
+#[cfg(windows)]
 pub(crate) fn service_switch(ui: &mut egui::Ui, value: &mut bool) -> egui::Response {
     sized_switch(ui, value, theme::SERVICE_SWITCH_SIZE)
 }
@@ -559,6 +575,7 @@ pub fn viewer_caption_separator(ui: &egui::Ui, center: egui::Pos2) {
     );
 }
 
+#[cfg(windows)]
 pub fn device_menu_header(ui: &mut egui::Ui, busy: bool) -> bool {
     let (rect, _) = ui.allocate_exact_size(
         vec2(ui.available_width(), theme::MENU_HEIGHT),
@@ -605,6 +622,7 @@ pub fn device_menu_header(ui: &mut egui::Ui, busy: bool) -> bool {
         .clicked()
 }
 
+#[cfg(windows)]
 pub fn device_menu_row(
     ui: &mut egui::Ui,
     label: &str,
@@ -746,6 +764,7 @@ pub fn dialog_frame() -> egui::Frame {
 }
 
 /// Release text is displayed locally; it never loads remote images or HTML.
+#[cfg(windows)]
 pub(crate) fn release_notes(ui: &mut egui::Ui, notes: &str) {
     if notes.trim().is_empty() {
         ui.label(RichText::new(t().controls.no_release_notes).color(MUTED));
@@ -782,12 +801,14 @@ pub fn primary(label: &str) -> egui::Button<'_> {
         .min_size(vec2(64.0, HEIGHT))
 }
 
+#[cfg(windows)]
 pub(crate) fn centered_button(label: &str) -> egui::Button<'_> {
     egui::Button::new((egui::Atom::grow(), label, egui::Atom::grow()))
         .gap(0.0)
         .min_size(vec2(64.0, theme::CONTROL_HEIGHT))
 }
 
+#[cfg(windows)]
 pub(crate) fn centered_primary(label: &str) -> egui::Button<'_> {
     egui::Button::new((
         egui::Atom::grow(),
@@ -800,6 +821,7 @@ pub(crate) fn centered_primary(label: &str) -> egui::Button<'_> {
     .min_size(vec2(64.0, HEIGHT))
 }
 
+#[cfg(windows)]
 pub(crate) fn section_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(SURFACE)
@@ -807,6 +829,7 @@ pub(crate) fn section_frame() -> egui::Frame {
         .corner_radius(theme::PANEL_RADIUS)
 }
 
+#[cfg(windows)]
 pub(crate) fn visibility_button(ui: &mut egui::Ui, visible: &mut bool) -> egui::Response {
     let (_, response) = icon_button_area(ui, HEIGHT);
     response.widget_info(|| {
@@ -854,6 +877,7 @@ pub(crate) fn visibility_button(ui: &mut egui::Ui, visible: &mut bool) -> egui::
 }
 
 /// A full button target with a vector chevron, independent of font glyphs.
+#[cfg(windows)]
 pub fn back_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
     let text =
         ui.painter()
@@ -897,6 +921,7 @@ pub fn paint_close(painter: &egui::Painter, rect: egui::Rect, color: Color32) {
     }
 }
 
+#[cfg(windows)]
 pub(crate) fn edit_button(ui: &mut egui::Ui, hint: &str, size: f32) -> egui::Response {
     let (rect, response) = icon_button_area(ui, size);
     response
@@ -944,6 +969,7 @@ pub(crate) fn icon_button_area(ui: &mut egui::Ui, size: f32) -> (egui::Rect, egu
 }
 
 /// An unobtrusive button with the same hover/pressed states as icon controls.
+#[cfg(windows)]
 pub(crate) fn value_button(
     ui: &mut egui::Ui,
     size: egui::Vec2,
@@ -1400,8 +1426,12 @@ mod annotation_color;
 pub(crate) use annotation::{
     AnnotationIcon, annotation_board, annotation_button, annotation_clear_dialog, annotation_color,
     annotation_frame, annotation_header, annotation_tool_button, annotation_tool_frame,
-    annotation_width, paint_annotation_icon,
+    annotation_width,
 };
+#[cfg(windows)]
+pub(crate) use annotation::paint_annotation_icon;
 
+#[cfg(windows)]
 mod task_status;
+#[cfg(windows)]
 pub(crate) use task_status::task_button_progress;

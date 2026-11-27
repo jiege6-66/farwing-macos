@@ -9,7 +9,9 @@ pub(crate) mod service;
 use super::bundle;
 use crate::protocol::peer::{self, FrameType};
 use anyhow::{Context, Result};
-pub(crate) use controller::{Controller, Phase, Snapshot};
+pub(crate) use controller::Controller;
+#[cfg(windows)]
+pub(crate) use controller::{Phase, Snapshot};
 pub(crate) use host::Host;
 use prost::Message;
 use std::sync::{Mutex, MutexGuard};

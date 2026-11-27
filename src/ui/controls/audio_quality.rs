@@ -12,6 +12,7 @@ fn label(kbps: u32) -> &'static str {
     }
 }
 
+#[cfg(windows)]
 pub(crate) fn audio_quality(ui: &mut egui::Ui, quality: &mut Quality) -> bool {
     let previous = *quality;
     egui::ComboBox::from_id_salt("audio-quality")

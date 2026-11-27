@@ -1,5 +1,7 @@
 //! Window-local operation messages. Publishing a message never consumes page layout.
-use super::{DialogAction, DialogIcon, dialog_actions, dialog_frame, dialog_header, theme};
+use super::DialogIcon;
+#[cfg(windows)]
+use super::{DialogAction, dialog_actions, dialog_frame, dialog_header, theme};
 use crate::i18n::t;
 use egui::{Context, Id};
 use std::collections::{HashMap, VecDeque};
@@ -12,12 +14,14 @@ struct Notice {
     icon: DialogIcon,
     action: Option<String>,
     report: bool,
+    #[cfg(windows)]
     parent: Option<egui::LayerId>,
 }
 
 #[derive(Clone, Default)]
 struct State {
     pending: VecDeque<Notice>,
+    #[cfg(windows)]
     visible: Option<Id>,
     dialog: Option<(u64, egui::LayerId)>,
     observed: HashMap<Id, String>,
@@ -94,10 +98,14 @@ fn publish(
     report: bool,
     nested: bool,
 ) {
+    #[cfg(not(windows))]
+    let _ = nested;
     if message.trim().is_empty() {
         return;
     }
+    #[cfg(windows)]
     let frame = ctx.cumulative_frame_nr();
+    #[cfg(windows)]
     let parent = if nested {
         ctx.data_mut(|d| d.get_temp_mut_or_default::<State>(state_id()).dialog)
             .filter(|(seen, _)| *seen == frame)
@@ -125,6 +133,7 @@ fn publish(
                 icon,
                 action: action.map(str::to_owned),
                 report,
+                #[cfg(windows)]
                 parent,
             });
         }
@@ -208,6 +217,7 @@ fn observe(
     }
 }
 
+#[cfg(windows)]
 pub(crate) fn show_notices(ctx: &Context) {
     let frame = ctx.cumulative_frame_nr();
     ctx.data_mut(|d| {
@@ -339,6 +349,7 @@ pub(crate) fn progress_notice(
     }
 }
 
+#[cfg(windows)]
 pub(crate) fn observe_form_notice(
     ctx: &Context,
     source: impl egui::AsId,

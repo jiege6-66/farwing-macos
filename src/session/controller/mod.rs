@@ -26,6 +26,7 @@ pub use direct::DirectRequest;
 pub use direct::run_direct_viewer_window;
 #[cfg(windows)]
 pub use viewing::{run_assist_viewer_window, run_native_viewer_session, run_saved_viewer_window};
+#[cfg(windows)]
 pub(crate) use assist::target_label as assist_target_label;
 
 pub type ConnectionProgressReporter = Arc<dyn Fn(ConnectionProgress) + Send + Sync>;
