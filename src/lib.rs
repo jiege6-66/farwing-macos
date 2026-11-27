@@ -1,7 +1,7 @@
 //! Farwing Client: self-hosted remote desktop and streaming, Windows application composition.
 
-#[cfg(not(windows))]
-compile_error!("Farwing currently supports Windows only");
+#[cfg(not(any(windows, target_os = "macos")))]
+compile_error!("Farwing supports only Windows and macOS targets");
 
 pub mod product;
 
