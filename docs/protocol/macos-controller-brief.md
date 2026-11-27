@@ -117,13 +117,14 @@
 
 ### 1.3 命令
 
-`src/main.rs` 的 `Commands`（`enum Commands`）在 Mac 首版的取舍：
+M1 已按代码确认 `src/main.rs` 的命令在 Mac 首版的取舍：
 
-| 编入 | 不编入（没有后端） |
-|---|---|
-| `Gui`、`Server`、`Login`、`Logout`、`Id`、`Devices`、`Connect`、`Assist`（作为主控）、`Friend`、`Grant`、`Sessions`、`Lan`、`Trusted`、`Dev` 中不依赖被控的子命令（`video`、`input` 等） | `WolConfigure`、`Update`、`Notification`、`Uninstall`、`Service`、`HostResident`、`InputAgent`、`CaptureAgent`、`Component`、`DisplayRecovery`、`PluginVideoHost`、`EncoderProbe`、`DesktopAccess`、`PluginHost`、`Host` |
+| 层级 | 编入 | 不编入（仅 Windows） |
+|---|---|---|
+| 顶层 | `Gui`、`Server`、`Login`、`Logout`、`Id`、`Devices`、`Connect`（含 `--dev-*` 参数）、`Assist`（作为主控）、`Friend`、`Grant`、`Sessions`、`Lan`、`Dev` | `WolConfigure`、`Update`、`Notification`、`Uninstall`、`Service`、`HostResident`、`InputAgent`、`CaptureAgent`、`Component`、`DisplayRecovery`、`PluginVideoHost`、`EncoderProbe`、`DesktopAccess`、`PluginHost`、`Host`、`Trusted` |
+| `Dev` 子命令 | `Ports`、`Power`、`Input`、`Video` | `Plugins`、`Camera`、`Voice`（依赖被控或 Windows 后端）；`Clipboard`、`Files`、`Diagnostics`（不在首版范围内，诊断模块也有被控侧逻辑） |
 
-`Lan`、`Trusted` 中属于被控一侧的子命令同样不编入。`src/application/mod.rs:20-70` 的入口函数按同样的划分加 `cfg`。逐个子命令的取舍在 M1 时按代码确认，写回本节。
+`Trusted` 整个命令不编入：它操作本机被控端的信任列表，后台服务模式下经 `transport::direct::managed` 访问 Windows 常驻服务。命令定义、分派及 `src/application/mod.rs`、`src/application/cli.rs` 中对应的 Windows 专用入口均用 `#[cfg(windows)]` 隔开。Mac 上库的编译阻断尚未清完，`cargo check` 还未走到 `main.rs` 的类型检查；Windows 行为待 CI 回归验证。
 
 ### 1.4 检查
 
@@ -462,5 +463,5 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 | 步 | 状态 |
 |---|---|
 | M0 | 包装脚本、测试和开发分支 CI 已配置；本机 Apple Development 签名、严格验签、标识符和证书核对通过。开发机已有 Xcode 命令行工具，Rust 1.95.0 装在仓库外的隔离目录；未实际运行 GitHub workflow，权限判别待验（§8.3）。 |
-| M1 | Mac 侧 §1.1–§1.2 构建层已完成：build script 通过，`cargo check` 仍停在 `farwing` 的 Rust 代码；Windows CI（`windows-2025`）上 `cargo build --release` 与 `cargo fast-test --lib` 通过（见 `docs/selftest-results.md`）。其余 M1 工作尚未开始。 |
+| M1 | Mac 侧已完成 §1.1–§1.2 构建层、§2.3 共享项迁移及 §1.3 命令取舍；build script 通过，`cargo check` 仍停在 `farwing` 库的 Rust 代码。§1.1–§1.2 的 Windows CI（`windows-2025`）构建与库测试已通过（见 `docs/selftest-results.md`），§2.3、§1.3 的 Windows CI 回归待验；其余 M1 工作尚未开始。 |
 | M2–M9 | 未开始 |
