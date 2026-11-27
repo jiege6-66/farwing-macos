@@ -393,6 +393,7 @@ impl Manager {
 impl DeviceCenterApp {
     pub(in crate::application::app) fn component_dialogs(&mut self, ctx: &egui::Context) {
         self.center_ui.components.poll();
+        #[cfg(windows)]
         if std::mem::take(&mut self.center_ui.components.handoff) {
             crate::application::schedule_installed_handoff();
             self.exit_requested = true;

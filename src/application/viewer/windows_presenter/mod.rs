@@ -40,5 +40,6 @@ mod worker;
 
 mod plugin_capture;
 mod plugin_video;
+#[cfg(windows)]
 pub(crate) use plugin_video::dev_render as dev_render_plugins;
 mod screen_windows;

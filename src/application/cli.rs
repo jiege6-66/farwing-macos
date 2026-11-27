@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use crate::account::client::AuthenticatedClient;
 use crate::account::server::ServerConfig;
 use crate::session::device_session::DeviceRuntime;
+#[cfg(windows)]
 use crate::session::presence::{ActivePresence, PresenceEvent, PresenceState};
 
 /// `server set`: save the Farwing Server of this profile.
@@ -79,6 +80,7 @@ pub async fn logout() -> Result<()> {
     Ok(())
 }
 
+#[cfg(windows)]
 /// `host`: keep this device online and controllable without a window until
 /// Ctrl+C. Uses the saved login of the current profile.
 pub async fn host(
@@ -543,6 +545,7 @@ pub async fn dev_ports(
     result
 }
 
+#[cfg(windows)]
 async fn wait_files(
     handle: &crate::features::file_transfer::service::Handle,
     deadline: std::time::Instant,
@@ -562,6 +565,7 @@ async fn wait_files(
     }
 }
 
+#[cfg(windows)]
 /// `dev files`: browse a remote folder and optionally download/upload one
 /// entry through the real file-transfer service, reporting the throughput.
 pub async fn dev_files(
@@ -779,6 +783,7 @@ pub async fn dev_power(device_id: &str, shutdown: bool) -> Result<()> {
     .await
 }
 
+#[cfg(windows)]
 /// `dev diagnostics`: fetch the redacted diagnostic bundle of an account
 /// device over the DIAG channel, as the device center does.
 pub async fn dev_diagnostics(
@@ -887,15 +892,18 @@ pub fn dev_video_without_recovery() {
     crate::protocol::peer::disable_controller_recovery();
 }
 
+#[cfg(windows)]
 /// `dev plugins`: load the installed plugins and check the bundled effects.
 pub fn dev_plugins() -> Result<()> {
     crate::application::dev_plugins::run()
 }
 
+#[cfg(windows)]
 pub fn dev_camera_list() -> Result<()> {
     crate::application::dev_camera::list()
 }
 
+#[cfg(windows)]
 pub fn dev_camera_probe(
     camera: Option<&str>,
     mode: Option<&str>,
@@ -905,6 +913,7 @@ pub fn dev_camera_probe(
     crate::application::dev_camera::probe(camera, mode, seconds, snapshot)
 }
 
+#[cfg(windows)]
 pub fn dev_camera_adjust(camera: Option<&str>, control: &str, value: i32, auto: bool) -> Result<()> {
     crate::application::dev_camera::adjust(camera, control, value, auto)
 }
@@ -992,6 +1001,7 @@ pub async fn dev_video(
     .await
 }
 
+#[cfg(windows)]
 /// `dev clipboard`: check CLIPBOARD v2 end to end against a real host on
 /// this machine. The controller side runs an in-memory exchange (it never
 /// touches the Windows clipboard); this process reads and writes the shared
@@ -1038,6 +1048,7 @@ pub async fn dev_clipboard(
     .await
 }
 
+#[cfg(windows)]
 fn clipboard_pull_checks(exchange: &crate::features::clipboard::Clipboard) -> Result<()> {
     use crate::features::clipboard::{system, wire::Format};
     let utf16 = |text: &str| -> Vec<u8> {
@@ -1074,6 +1085,7 @@ fn clipboard_pull_checks(exchange: &crate::features::clipboard::Clipboard) -> Re
     Ok(())
 }
 
+#[cfg(windows)]
 fn clipboard_checks(
     exchange: &crate::features::clipboard::Clipboard,
     scratch: &std::path::Path,
@@ -1322,6 +1334,7 @@ pub async fn lan(seconds: u64) -> Result<()> {
     Ok(())
 }
 
+#[cfg(windows)]
 /// The host side of this device: the background service's (which hosts in
 /// service mode, reached over its pipe) or this profile's.
 fn direct_host() -> Result<(Option<String>, crate::transport::direct::managed::HostDirect)> {
@@ -1334,6 +1347,7 @@ fn direct_host() -> Result<(Option<String>, crate::transport::direct::managed::H
     }
 }
 
+#[cfg(windows)]
 /// Apply a host-side change: in the background service when it hosts,
 /// otherwise in this profile.
 fn host_action(action: crate::transport::direct::managed::Action) -> Result<()> {
@@ -1344,6 +1358,7 @@ fn host_action(action: crate::transport::direct::managed::Action) -> Result<()> 
     }
 }
 
+#[cfg(windows)]
 /// `trusted list`
 pub fn trusted_list() -> Result<()> {
     use crate::transport::direct::store;
@@ -1388,6 +1403,7 @@ pub fn trusted_list() -> Result<()> {
     Ok(())
 }
 
+#[cfg(windows)]
 /// `trusted add`
 pub fn trusted_add(device_id: &str, key: &str, name: &str, grants: Option<&str>) -> Result<()> {
     let device_id = crate::account::api::parse_device_id(device_id).context("设备 ID 无效")?;
@@ -1414,6 +1430,7 @@ pub fn trusted_add(device_id: &str, key: &str, name: &str, grants: Option<&str>)
     Ok(())
 }
 
+#[cfg(windows)]
 /// `trusted remove`: stop trusting a device here, and forget that it
 /// trusted this one.
 pub fn trusted_remove(device_id: &str) -> Result<()> {
@@ -1434,6 +1451,7 @@ pub fn trusted_remove(device_id: &str) -> Result<()> {
     Ok(())
 }
 
+#[cfg(windows)]
 /// `trusted grant`
 pub fn trusted_grant(device_id: &str, grants: &str) -> Result<()> {
     let device_id = crate::account::api::parse_device_id(device_id).context("设备 ID 无效")?;
@@ -1547,6 +1565,7 @@ pub async fn dev_input(
     .await
 }
 
+#[cfg(windows)]
 /// `dev voice`: joins a voice channel or call without a window, sends a
 /// test tone, and prints what each sender's track brought.
 pub async fn dev_voice(

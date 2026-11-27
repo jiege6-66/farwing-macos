@@ -38,6 +38,7 @@ impl std::fmt::Display for UpdateExit {
     }
 }
 impl std::error::Error for UpdateExit {}
+#[cfg(windows)]
 pub(crate) fn update_error_code(error: &anyhow::Error) -> i32 {
     error
         .downcast_ref::<UpdateExit>()

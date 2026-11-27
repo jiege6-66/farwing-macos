@@ -451,6 +451,7 @@ impl Captures {
     }
 }
 
+#[cfg(windows)]
 fn half_to_f32(half: u16) -> f32 {
     let sign = if half & 0x8000 != 0 { -1.0 } else { 1.0 };
     let exponent = i32::from((half >> 10) & 0x1f);
@@ -462,6 +463,7 @@ fn half_to_f32(half: u16) -> f32 {
     }
 }
 
+#[cfg(windows)]
 /// `dev plugins`: run `graph` once on an RGBA8 picture with the real executor
 /// on a hardware device, and read the output back (linear RGBA floats).
 pub(crate) fn dev_render(graph: &Graph, pixels: &[[u8; 4]], width: u32, height: u32) -> Result<Vec<[f32; 4]>> {

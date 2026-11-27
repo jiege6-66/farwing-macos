@@ -12,6 +12,7 @@ use farwing::account::api;
 use farwing::account::client::AuthenticatedClient;
 use farwing::account::login;
 use farwing::application::app;
+#[cfg(windows)]
 use farwing::diagnostics::logging;
 use farwing::media;
 use farwing::product;
@@ -41,6 +42,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    #[cfg(windows)]
     #[command(hide = true)]
     WolConfigure {
         #[arg(long)]
@@ -48,6 +50,7 @@ enum Commands {
         #[arg(long)]
         mac: String,
     },
+    #[cfg(windows)]
     /// 使用当前程序包更新已安装版本
     Update {
         /// 不显示更新窗口；需要管理员权限时仍请求 Windows UAC
@@ -57,20 +60,25 @@ enum Commands {
         #[arg(long, requires = "silent")]
         no_elevate: bool,
     },
+    #[cfg(windows)]
     #[command(hide = true)]
     Notification { uri: String },
+    #[cfg(windows)]
     /// 打开卸载窗口，选择是否保留驱动和本机数据
     Uninstall {
         #[arg(long, hide = true)]
         parent: Option<u32>,
     },
+    #[cfg(windows)]
     #[command(hide = true)]
     Service,
+    #[cfg(windows)]
     #[command(hide = true)]
     HostResident {
         #[arg(long)]
         parent: u32,
     },
+    #[cfg(windows)]
     #[command(hide = true)]
     InputAgent {
         #[arg(long)]
@@ -78,6 +86,7 @@ enum Commands {
         #[arg(long)]
         parent: u32,
     },
+    #[cfg(windows)]
     #[command(hide = true)]
     CaptureAgent {
         #[arg(long)]
@@ -85,6 +94,7 @@ enum Commands {
         #[arg(long)]
         parent: u32,
     },
+    #[cfg(windows)]
     #[command(hide = true)]
     Component {
         #[arg(value_enum)]
@@ -98,18 +108,23 @@ enum Commands {
         #[command(flatten)]
         removal: farwing::application::RemovalOptions,
     },
+    #[cfg(windows)]
     #[command(hide = true)]
     DisplayRecovery { token: String },
+    #[cfg(windows)]
     #[command(hide = true)]
     PluginVideoHost,
+    #[cfg(windows)]
     #[command(hide = true)]
     EncoderProbe,
+    #[cfg(windows)]
     #[command(hide = true)]
     DesktopAccess {
         #[arg(long)]
         parent: u32,
     },
 
+    #[cfg(windows)]
     #[command(hide = true)]
     PluginHost { manifest: PathBuf },
     /// 打开完整图形设备中心
@@ -148,6 +163,7 @@ enum Commands {
     },
     /// 退出登录并从账号移除本机设备
     Logout,
+    #[cfg(windows)]
     /// 无窗口运行被控端：保持在线并接受连接，按 Ctrl+C 退出
     Host {
         /// 开启“允许被控”并保存
@@ -180,6 +196,7 @@ enum Commands {
         #[arg(long, default_value_t = 2)]
         seconds: u64,
     },
+    #[cfg(windows)]
     /// 管理本机信任的设备（无需访问码即可连接本机）
     Trusted {
         #[command(subcommand)]
@@ -279,6 +296,7 @@ enum Commands {
     },
 }
 
+#[cfg(windows)]
 #[derive(Subcommand)]
 enum DevCameraAction {
     /// 列出摄像头、支持的格式、默认格式与画面调整项（JSON）
@@ -338,6 +356,7 @@ enum DevAction {
         #[arg(long)]
         shutdown: bool,
     },
+    #[cfg(windows)]
     /// 获取被控端的脱敏诊断包
     Diagnostics {
         #[arg(long)]
@@ -369,13 +388,16 @@ enum DevAction {
         #[arg(long)]
         allow_disruptive: bool,
     },
+    #[cfg(windows)]
     /// 加载已安装的插件（独立宿主进程、ABI、程序描述），并在显卡上运行画面滤镜示例做检查
     Plugins,
+    #[cfg(windows)]
     /// 本机摄像头：列出摄像头、格式与画面调整，或打开一个检查采集
     Camera {
         #[command(subcommand)]
         action: DevCameraAction,
     },
+    #[cfg(windows)]
     /// 无窗口进入语音频道或私信通话，发送测试音，输出收到的各路声音的 JSON 统计
     Voice {
         /// 语音频道 ID
@@ -436,6 +458,7 @@ enum DevAction {
         #[arg(long)]
         listen: bool,
     },
+    #[cfg(windows)]
     /// 端到端检查剪贴板（主控为内存剪贴板；会改写本机 Windows 剪贴板）
     Clipboard {
         #[arg(long)]
@@ -447,6 +470,7 @@ enum DevAction {
         #[arg(long)]
         pull_only: bool,
     },
+    #[cfg(windows)]
     /// 浏览被控端目录，可选下载/上传一项
     Files {
         #[arg(long)]
@@ -509,6 +533,7 @@ enum GrantAction {
     },
 }
 
+#[cfg(windows)]
 #[derive(Subcommand)]
 enum TrustedAction {
     /// 列出本机信任的设备，以及信任本机的设备
@@ -558,12 +583,14 @@ fn main() -> Result<()> {
     if let Err(error) = product::profile_arg(std::env::args_os().skip(1))
         .and_then(|profile| product::init_profile(profile.as_deref()))
     {
+        #[cfg(windows)]
         attach_parent_console();
         return Err(error);
     }
     farwing::application::bootstrap::initialize()?;
     let parsed = Cli::try_parse();
 
+    #[cfg(windows)]
     if !parsed.as_ref().is_ok_and(|cli| {
         matches!(
             &cli.command,
@@ -601,9 +628,11 @@ fn main() -> Result<()> {
         transport: None,
     });
 
+    #[cfg(windows)]
     if let Commands::Notification { uri } = &command {
         return app::notification_activation(uri);
     }
+    #[cfg(windows)]
     if matches!(command, Commands::Gui { .. }) && farwing::application::route_installed_gui()? {
         farwing::application::bootstrap::handoff();
         return Ok(());
@@ -629,6 +658,7 @@ fn main() -> Result<()> {
     } else {
         None
     };
+    #[cfg(windows)]
     let _logging = if matches!(command, Commands::Uninstall { .. }) {
         None
     } else {
@@ -639,6 +669,7 @@ fn main() -> Result<()> {
     };
     tracing::info!(target: "farwing", version = env!("CARGO_PKG_VERSION"), "application started");
 
+    #[cfg(windows)]
     if let Commands::Update { silent, no_elevate } = command {
         if !silent {
             return farwing::application::update_application(false, false).map(|_| ());
@@ -663,6 +694,7 @@ fn main() -> Result<()> {
         std::process::exit(code);
     }
 
+    #[cfg(windows)]
     if let Commands::Component {
         component,
         operation,
@@ -698,26 +730,40 @@ fn main() -> Result<()> {
         return Ok(());
     }
     let result = match command {
+        #[cfg(windows)]
         Commands::WolConfigure { interface, mac } => {
             farwing::application::configure_wol(interface, mac)
         }
+        #[cfg(windows)]
         Commands::Update { .. } => unreachable!(),
+        #[cfg(windows)]
         Commands::Uninstall { parent } => farwing::application::uninstall_application(parent),
+        #[cfg(windows)]
         Commands::Component { .. } => unreachable!(),
+        #[cfg(windows)]
         Commands::Service => farwing::application::host_service(),
+        #[cfg(windows)]
         Commands::HostResident { parent } => farwing::application::host_resident(parent),
+        #[cfg(windows)]
         Commands::InputAgent { pipe, parent } => farwing::application::input_agent(&pipe, parent),
+        #[cfg(windows)]
         Commands::CaptureAgent { pipe, parent } => {
             farwing::application::capture_agent(&pipe, parent)
         }
+        #[cfg(windows)]
         Commands::DisplayRecovery { token } => farwing::application::display_recovery(&token),
+        #[cfg(windows)]
         Commands::PluginVideoHost => farwing::plugins::video::host(),
+        #[cfg(windows)]
         Commands::EncoderProbe => farwing::application::encoder_probe(),
+        #[cfg(windows)]
         Commands::DesktopAccess { parent } => farwing::application::desktop_access(parent),
+        #[cfg(windows)]
         Commands::Notification { .. } => {
             unreachable!("notification activation is handled before application startup")
         }
 
+        #[cfg(windows)]
         Commands::PluginHost { manifest } => farwing::plugins::host(&manifest),
         Commands::Gui {
             background,
@@ -787,6 +833,7 @@ fn main() -> Result<()> {
         Commands::Logout => {
             tokio::runtime::Runtime::new()?.block_on(farwing::application::cli::logout())
         }
+        #[cfg(windows)]
         Commands::Host {
             allow,
             deny,
@@ -815,6 +862,7 @@ fn main() -> Result<()> {
         Commands::Id => farwing::application::cli::id(),
         Commands::Lan { seconds } => tokio::runtime::Runtime::new()?
             .block_on(farwing::application::cli::lan(seconds)),
+        #[cfg(windows)]
         Commands::Trusted { action } => match action {
             TrustedAction::List => farwing::application::cli::trusted_list(),
             TrustedAction::Add {
@@ -856,6 +904,7 @@ fn main() -> Result<()> {
                         &device_id, local, &remote, udp, seconds, options,
                     ))
                 }
+                #[cfg(windows)]
                 DevAction::Diagnostics {
                     device_id,
                     seconds,
@@ -882,6 +931,7 @@ fn main() -> Result<()> {
                     allow_disruptive,
                     options,
                 )),
+                #[cfg(windows)]
                 DevAction::Clipboard {
                     device_id,
                     scratch,
@@ -889,6 +939,7 @@ fn main() -> Result<()> {
                 } => runtime.block_on(farwing::application::cli::dev_clipboard(
                     &device_id, scratch, pull_only, options,
                 )),
+                #[cfg(windows)]
                 DevAction::Voice {
                     channel,
                     call,
@@ -938,7 +989,9 @@ fn main() -> Result<()> {
                         options,
                     ))
                 }
+                #[cfg(windows)]
                 DevAction::Plugins => farwing::application::cli::dev_plugins(),
+                #[cfg(windows)]
                 DevAction::Camera { action } => match action {
                     DevCameraAction::List => farwing::application::cli::dev_camera_list(),
                     DevCameraAction::Probe {
@@ -968,6 +1021,7 @@ fn main() -> Result<()> {
                     device_id,
                     shutdown,
                 } => runtime.block_on(farwing::application::cli::dev_power(&device_id, shutdown)),
+                #[cfg(windows)]
                 DevAction::Files {
                     device_id,
                     list,
@@ -1088,12 +1142,14 @@ fn main() -> Result<()> {
         tracing::error!(target: "farwing", error = %format_args!("{error:#}"), "application stopped with an error");
     }
     drop(_instance);
+    #[cfg(windows)]
     if result.is_ok() && farwing::application::take_installed_handoff() {
         farwing::application::launch_installed(std::env::args_os().skip(1))?;
     }
     result
 }
 
+#[cfg(windows)]
 fn attach_parent_console() {
     use windows::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
 
