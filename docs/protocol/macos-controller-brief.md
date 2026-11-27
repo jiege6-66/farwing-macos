@@ -458,5 +458,5 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 
 | 步 | 状态 |
 |---|---|
-| M0 | 包装脚本、测试和开发分支 CI 已配置；本机 Apple Development 签名、严格验签、标识符和证书核对通过。当前机器有 Xcode 命令行工具，但未找到 `cargo` / `rustup`；未实际运行 GitHub workflow，权限判别待验（§8.3）。 |
+| M0 | 包装脚本、测试和开发分支 CI 已配置；本机 Apple Development 签名、严格验签、标识符和证书核对通过。开发机已有 Xcode 命令行工具，Rust 1.95.0 装在仓库外的隔离目录；未实际运行 GitHub workflow，权限判别待验（§8.3）。 |
 | M1–M9 | 未开始 |
