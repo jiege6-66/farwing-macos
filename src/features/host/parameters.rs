@@ -2,6 +2,7 @@
 //! Quality is a bandwidth ceiling, not a promise of constant traffic or fidelity.
 use super::format::Format;
 pub(crate) use crate::media::geometry::Tier;
+use crate::media::geometry::tier_rate;
 use std::{
     collections::VecDeque,
     time::{Duration, Instant},
@@ -92,43 +93,6 @@ fn downgrade_threshold(maximum: u32) -> u32 {
 
 fn standard(format: Format, tier: Tier, source: (u32, u32), fps: u32) -> Bounds {
     Bounds::video(tier_rate(tier, source, fps, format.chroma == 3))
-}
-
-// 60 FPS ceilings in Mbps at 720p, 1080p, 1440p and 4K. Each codec has
-// independent quality anchors; compression savings are content-dependent.
-// 10-bit preserves gradients without a blanket raw-bit-depth surcharge.
-/// The bitrate ceiling (bps) of `tier` for a `source` screen at `fps`,
-/// doubled for 4:4:4 (`true_color`). The quality menus show it.
-pub(crate) fn tier_rate(tier: Tier, source: (u32, u32), fps: u32, true_color: bool) -> u32 {
-    // One table for every codec: H.265 and AV1 spend their efficiency on
-    // picture quality at the same rate, not on a lower rate.
-    let rates = match tier {
-        Tier::P720 => [1.5, 1.5, 1.5, 1.5],
-        Tier::P1080 => [5.5, 8.0, 8.0, 8.0],
-        Tier::P1440 => [8.0, 14.0, 24.0, 24.0],
-        Tier::P2160 => [12.0, 20.0, 36.0, 60.0],
-    };
-    let size = crate::media::geometry::output_size(source.0, source.1, tier);
-    let pixels = u64::from(size.0) * u64::from(size.1);
-    let anchors = [1280u64 * 720, 1920 * 1080, 2560 * 1440, 3840 * 2160];
-    let base = if pixels <= anchors[0] {
-        rates[0] * (pixels as f64 / anchors[0] as f64).max(0.25)
-    } else {
-        (1..anchors.len())
-            .find(|&i| pixels <= anchors[i])
-            .map_or(rates[3], |i| {
-                let fraction =
-                    (pixels - anchors[i - 1]) as f64 / (anchors[i] - anchors[i - 1]) as f64;
-                rates[i - 1] + (rates[i] - rates[i - 1]) * fraction
-            })
-    };
-    // Like Moonlight's default-rate curve, high FPS grows sublinearly: adjacent
-    // frames share more information. No 30/60/90/120 tier discontinuities.
-    let ratio = f64::from(fps.clamp(1, 144)) / 60.0;
-    let color = if true_color { 2.0 } else { 1.0 };
-    (base * 1_000_000.0 * color * if fps <= 60 { ratio } else { ratio.sqrt() })
-        .round()
-        .clamp(500_000.0, 500_000_000.0) as u32
 }
 
 pub(crate) fn fixed(format: Format, target: Target, size: (u32, u32), fps: u32) -> Bounds {
@@ -516,16 +480,6 @@ mod tests {
         // The table's anchors at 1080p60: 高清 8M, 超清 14M.
         assert_eq!(standard(format(Codec::Av1), Tier::P1080, (1920, 1080), 60).maximum, 8_000_000);
         assert_eq!(standard(format(Codec::H265), Tier::P1440, (1920, 1080), 60).maximum, 14_000_000);
-    }
-
-    #[test]
-    fn tier_rates_follow_size_frame_rate_and_colour() {
-        // 超清 on a 2560x1600 screen is output at 2304x1440.
-        assert_eq!(tier_rate(Tier::P1440, (2560, 1600), 60, false), 21_714_286);
-        assert_eq!(tier_rate(Tier::P1440, (2560, 1600), 30, false), 10_857_143);
-        assert_eq!(tier_rate(Tier::P1440, (2560, 1600), 60, true), 43_428_571);
-        // Above 60 FPS the rate grows with the square root.
-        assert_eq!(tier_rate(Tier::P1080, (1920, 1080), 144, false), 12_393_547);
     }
 
     #[test]

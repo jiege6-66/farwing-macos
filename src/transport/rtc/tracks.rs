@@ -10,6 +10,13 @@ use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
+/// Number of video tracks negotiated per peer connection; captures are attached
+/// and detached independently.
+pub(crate) const TRACK_COUNT: usize = 5;
+
+/// The `audio_1` track's stream id.
+pub(crate) const LISTEN_TRACK: &str = "audio_1";
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MediaKind {
     Audio,

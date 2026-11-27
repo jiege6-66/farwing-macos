@@ -1,5 +1,5 @@
 // The bitrate ceiling of each quality tier, as the host computes it
-// (`src/features/host/parameters.rs` `tier_rate`): the menu shows the figure
+// (`src/media/geometry.rs` `tier_rate`): the menu shows the figure
 // for the viewed screen at the chosen frame rate.
 
 /// Output size limit of tiers 1–4 (`src/media/geometry.rs` `dimensions`).

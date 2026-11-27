@@ -208,7 +208,7 @@ async fn capture_request(session: &mut Screens, capture: &CaptureControl) -> Res
     }
     // A files or ports session, or one whose `view` was withdrawn, never
     // gets the picture; a camera needs `camera` instead (checked there).
-    if !crate::features::host::cameras::is_camera(capture.screen_id)
+    if !crate::media::camera::is_camera(capture.screen_id)
         && !session
             .authorization()
             .granted(farwing_protocol::caps::VIEW)
@@ -220,7 +220,7 @@ async fn capture_request(session: &mut Screens, capture: &CaptureControl) -> Res
         Some(track) => {
             let track = usize::try_from(track)
                 .ok()
-                .filter(|track| *track < crate::features::host::peer::screens::TRACK_COUNT)
+                .filter(|track| *track < crate::transport::rtc::tracks::TRACK_COUNT)
                 .ok_or_else(|| refuse(error_code::BAD_REQUEST, display_reason::INVALID))?;
             session.start_on(capture.screen_id, Some(track)).await
         }

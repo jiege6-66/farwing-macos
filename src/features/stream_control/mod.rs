@@ -52,6 +52,9 @@ pub(crate) mod publisher;
 const DEFAULT_CUSTOM_BITRATE_MBPS: u32 = 30;
 pub const MAX_CUSTOM_BITRATE_MBPS: u32 = 500;
 
+/// The frame rate of the shared viewer stream.
+pub(crate) const SHARED_VIEW_FPS: u32 = 60;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StreamQuality {
@@ -67,7 +70,7 @@ impl StreamQuality {
     /// The tier's bitrate ceiling (bps) for `screen` at `fps` (the host
     /// caps it at the screen's refresh rate); `None` for 自动 and 自定义.
     pub(crate) fn ceiling(self, screen: &RemoteScreen, fps: u32, true_color: bool) -> Option<u32> {
-        use crate::features::host::parameters::Tier;
+        use crate::media::geometry::{Tier, tier_rate};
         let tier = match self {
             Self::Fast => Tier::P720,
             Self::Clear => Tier::P1080,
@@ -79,7 +82,7 @@ impl StreamQuality {
             return None;
         }
         let fps = if screen.refresh_hz > 0 { fps.min(screen.refresh_hz) } else { fps };
-        Some(crate::features::host::parameters::tier_rate(
+        Some(tier_rate(
             tier,
             (screen.width, screen.height),
             fps.max(1),

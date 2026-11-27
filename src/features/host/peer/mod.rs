@@ -1,7 +1,7 @@
 //! Controlled desktop connection: session-scoped peer, capture owner and RTP sender.
 use crate::i18n::t;
 use super::{VideoConfig, capture, lock};
-use crate::transport::rtc::ConnectionCore;
+use crate::transport::rtc::{ConnectionCore, tracks::LISTEN_TRACK};
 use anyhow::Result;
 use std::{
     sync::{
@@ -104,7 +104,7 @@ impl Published {
     fn display_id(&self) -> i32 {
         match &self.source {
             capture::Source::Screen(screen) => screen.id,
-            capture::Source::Camera(camera) => super::cameras::display_id(&camera.camera),
+            capture::Source::Camera(camera) => crate::media::camera::display_id(&camera.camera),
         }
     }
     /// The screen it shows (-1: not a screen).
@@ -287,8 +287,8 @@ impl Peer {
                 sdp_fmtp_line: farwing_rtc_wire::OPUS_FMTP.into(),
                 ..Default::default()
             },
-            super::listen::TRACK.into(),
-            super::listen::TRACK.into(),
+            LISTEN_TRACK.into(),
+            LISTEN_TRACK.into(),
         ));
         let listen_sender = connection
             .add_track(listen_track.clone() as Arc<dyn TrackLocal + Send + Sync>)

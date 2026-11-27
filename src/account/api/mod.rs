@@ -1462,7 +1462,7 @@ impl ServerApi {
 
     pub(crate) async fn wol_info(
         &self,
-        info: crate::features::host::wol::packet::LanInfo,
+        info: crate::features::wol::packet::LanInfo,
     ) -> Result<bool> {
         let request = wire::WolInfoRequest {
             mac: info.mac,

@@ -7,6 +7,7 @@
 //! and low latency.
 use crate::features::host::VideoConfig;
 use crate::features::host::format::{Codec, Color, Format, Negotiated};
+use crate::features::stream_control::SHARED_VIEW_FPS;
 use super::parameters::{Quality, Tier};
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -17,7 +18,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub(crate) const TIER: Tier = Tier::P1080;
 /// ...or of 流畅 for those who chose it.
 const SMOOTH: Tier = Tier::P720;
-pub(crate) const FPS: u32 = 60;
 /// One size bound for everyone: the tier, not each decoder's limit, sizes
 /// the picture, and equal bounds let the viewers share an encoder.
 const MAXIMUM: (u32, u32) = (3840, 2160);
@@ -100,8 +100,8 @@ pub(crate) fn apply(participant: Option<u64>, wanted: &mut VideoConfig, forwarde
     };
     wanted.quality = Quality::Tier(tier);
     wanted.auto_tier = tier;
-    wanted.fps = FPS;
-    wanted.requested_fps = FPS;
+    wanted.fps = SHARED_VIEW_FPS;
+    wanted.requested_fps = SHARED_VIEW_FPS;
     wanted.cinema = true;
     wanted.cursor_capture = true;
     wanted.color = Color::Sdr;

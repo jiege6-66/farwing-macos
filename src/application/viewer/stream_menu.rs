@@ -3,7 +3,7 @@ use crate::i18n::t;
 use egui::{Align, FontId, RichText, Sense, Stroke, vec2};
 
 use crate::features::stream_control::{
-    MouseMode, StreamControlHandle, StreamControlSettings, StreamQuality,
+    MouseMode, SHARED_VIEW_FPS, StreamControlHandle, StreamControlSettings, StreamQuality,
 };
 use crate::media::FrameRateChoice;
 
@@ -647,7 +647,7 @@ pub(super) fn show_stream_control_window(
     }
     let multi_screen = snapshot.screens.len() > 1;
     // A camera tab's menu is its camera's; a screen's is the stream's.
-    let camera = crate::features::host::cameras::is_camera(screen_id);
+    let camera = crate::media::camera::is_camera(screen_id);
     match state.page {
         Page::Camera(_) if !camera => state.page = Page::Quality,
         Page::Camera(_) => {}
@@ -751,11 +751,9 @@ pub(super) fn show_stream_control_window(
                                 let locked = handle.participants().shared_view();
                                 if locked {
                                     ui.label(
-                                        RichText::new((t().viewer.shared_view)(
-                                            crate::features::host::shared_view::FPS,
-                                        ))
-                                        .size(crate::ui::theme::SMALL)
-                                        .strong(),
+                                        RichText::new((t().viewer.shared_view)(SHARED_VIEW_FPS))
+                                            .size(crate::ui::theme::SMALL)
+                                            .strong(),
                                     );
                                     section_separator(ui);
                                 }

@@ -10,7 +10,8 @@ use super::negotiation::{
 use super::receive::{TrackForwardContext, forward_remote_track};
 use super::statistics::{connection_route, sample_network_performance};
 use super::tracks::{
-    ForwardedTrack, MediaKind, RtpForwardConfig, RtpForwarder, VideoTrackRegistry, VideoTrackSource,
+    ForwardedTrack, LISTEN_TRACK, MediaKind, RtpForwardConfig, RtpForwarder, VideoTrackRegistry,
+    VideoTrackSource,
 };
 use super::workers::std_mutex_lock;
 use crate::diagnostics::performance::PerformanceMonitor;
@@ -703,7 +704,7 @@ impl NativePeer {
                     };
                     let kind = track.kind();
                     let id = track.id();
-                    if kind == RTPCodecType::Audio && id == crate::features::host::listen::TRACK {
+                    if kind == RTPCodecType::Audio && id == LISTEN_TRACK {
                         // Mixed into the playback with the host's sound.
                         match audio.add_voice() {
                             Ok(voice) => {

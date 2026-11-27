@@ -261,7 +261,7 @@ impl HostClient {
     }
     pub(crate) async fn wol_info(
         &self,
-        info: crate::features::host::wol::packet::LanInfo,
+        info: crate::features::wol::packet::LanInfo,
     ) -> Result<bool> {
         if self.is_guest() {
             bail!("{}", t().session.error_guest_no_wol);

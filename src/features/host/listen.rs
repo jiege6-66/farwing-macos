@@ -8,9 +8,6 @@ use std::sync::Arc;
 use webrtc::rtp_transceiver::rtp_sender::RTCRtpSender;
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 
-/// The `audio_1` track's stream id.
-pub(crate) const TRACK: &str = "audio_1";
-
 struct Running {
     microphone: Microphone,
     tasks: Vec<tokio::task::JoinHandle<()>>,

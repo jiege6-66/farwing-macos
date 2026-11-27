@@ -1,6 +1,6 @@
 //! Read-only physical IPv4 inventory, change notifications, and interface-bound WoL UDP.
 pub(crate) mod setup;
-use crate::features::host::wol::packet::{LanInfo, mask, valid_ip};
+use crate::features::wol::packet::{LanInfo, mask, valid_ip};
 use anyhow::{Context, Result, ensure};
 use crate::i18n::t;
 use std::{

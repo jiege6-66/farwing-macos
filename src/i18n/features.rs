@@ -24,7 +24,7 @@ pub(crate) struct Features {
     pub host_settings_invalid: &'static str,
     pub host_settings_unsupported: &'static str,
     pub host_settings_save_failed: &'static str,
-    // host/encoding_settings.rs, host/format.rs, host/hevc.rs
+    // host/encoding_settings.rs, host/format.rs, media/hevc.rs
     pub host_codec_automatic: &'static str,
     pub host_codec_h264_only: &'static str,
     pub host_codec_h265_only: &'static str,
@@ -1374,7 +1374,7 @@ pub(crate) const ZH_CN: Features = Features {
     host_settings_invalid: "已保存的被控设置无效",
     host_settings_unsupported: "被控设置格式不受支持",
     host_settings_save_failed: "无法保存被控设置",
-    // host/encoding_settings.rs, host/format.rs, host/hevc.rs
+    // host/encoding_settings.rs, host/format.rs, media/hevc.rs
     host_codec_automatic: "自动协商（AV1 / H.265 / H.264）",
     host_codec_h264_only: "仅 H.264",
     host_codec_h265_only: "仅 H.265",
@@ -2650,7 +2650,7 @@ pub(crate) const EN: Features = Features {
     host_settings_invalid: "Saved host settings are invalid",
     host_settings_unsupported: "Unsupported host settings format",
     host_settings_save_failed: "Couldn't save host settings",
-    // host/encoding_settings.rs, host/format.rs, host/hevc.rs
+    // host/encoding_settings.rs, host/format.rs, media/hevc.rs
     host_codec_automatic: "Automatic (AV1 / H.265 / H.264)",
     host_codec_h264_only: "H.264 only",
     host_codec_h265_only: "H.265 only",

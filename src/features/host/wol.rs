@@ -1,9 +1,8 @@
 //! Optional account-owned LAN registration and WoL relay, independent of media threads.
-pub(crate) mod packet;
 pub(crate) mod setup;
+use crate::features::wol::packet::{LanInfo, Target};
 use crate::{platform::windows::wol as network, session::host_client::HostClient};
 use anyhow::{Result, ensure};
-use packet::{LanInfo, Target};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,

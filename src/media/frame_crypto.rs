@@ -389,7 +389,7 @@ mod tests {
             crate::media::video_format::annex_b_units(&plain),
             crate::media::video_format::annex_b_units(&frame)
         );
-        assert!(crate::features::host::hevc::payloads(1200, &sealed).is_ok());
+        assert!(crate::media::hevc::payloads(1200, &sealed).is_ok());
     }
 
     #[test]

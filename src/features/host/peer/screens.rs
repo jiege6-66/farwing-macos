@@ -1,12 +1,13 @@
 use crate::i18n::t;
 mod actions;
 mod headless;
-// Fixed negotiated video-track pool; captures are attached/detached independently.
 use super::{Published, media};
 use crate::features::host::{
     Lease, VideoConfig, capture, format::Negotiated, lock, track::VideoTrack, transport::Transport,
 };
+use crate::media::camera::{display_id, is_camera};
 use crate::platform::display::topology::{Target, Topology};
+use crate::transport::rtc::tracks::TRACK_COUNT;
 use anyhow::{Context, Result, ensure};
 use std::{
     collections::BTreeMap,
@@ -21,8 +22,6 @@ use webrtc::{
     peer_connection::RTCPeerConnection, rtp_transceiver::rtp_sender::RTCRtpSender,
     track::track_local::TrackLocal,
 };
-
-pub(crate) const TRACK_COUNT: usize = 5;
 
 #[derive(Clone)]
 pub(super) struct Inventory {
@@ -208,7 +207,7 @@ impl Slot {
     pub fn display_id(&self) -> Option<i32> {
         match self.source.as_ref()? {
             capture::Source::Screen(screen) => Some(screen.id),
-            capture::Source::Camera(camera) => Some(crate::features::host::cameras::display_id(&camera.camera)),
+            capture::Source::Camera(camera) => Some(display_id(&camera.camera)),
         }
     }
 }
@@ -650,7 +649,7 @@ impl Screens {
         cameras::cameras()
             .into_iter()
             .map(|camera| {
-                let id = cameras::display_id(&camera.id);
+                let id = display_id(&camera.id);
                 let running = self.slots.iter().find_map(|s| {
                     s.source.as_ref().and_then(capture::Source::camera).filter(|c| c.camera == camera.id)
                 });
@@ -729,7 +728,7 @@ impl Screens {
                 });
                 let params = self.params(&camera.id);
                 CameraInfo {
-                    id: cameras::display_id(&camera.id),
+                    id: display_id(&camera.id),
                     name: camera.name.clone(),
                     unavailable: if stopped {
                         t().camera.stopped_by_owner.to_owned()
@@ -778,7 +777,7 @@ impl Screens {
             CameraOp::Adjust(adjust) => {
                 let camera = cameras::cameras()
                     .into_iter()
-                    .find(|c| cameras::display_id(&c.id) == adjust.camera)
+                    .find(|c| display_id(&c.id) == adjust.camera)
                     .ok_or_else(|| refuse(error_code::NOT_FOUND, display_reason::NOT_FOUND))?;
                 let control = CameraControlKind::try_from(adjust.control)
                     .map_err(|_| refuse(error_code::BAD_REQUEST, display_reason::INVALID))?
@@ -813,7 +812,7 @@ impl Screens {
             return Err(refuse(error_code::FORBIDDEN, display_reason::CAMERA_NOT_ALLOWED));
         }
         let find = |list: Vec<crate::media::camera::Camera>| {
-            list.into_iter().find(|c| cameras::display_id(&c.id) == id)
+            list.into_iter().find(|c| display_id(&c.id) == id)
         };
         let camera = match find(cameras::cameras()) {
             Some(camera) => camera,
@@ -865,7 +864,10 @@ impl Screens {
     /// a camera it alone watches restarts with them.
     pub(crate) async fn set_camera_params(&mut self, id: i32, params: Option<crate::media::camera::Params>) -> Result<()> {
         use crate::features::host::cameras;
-        let Some(camera) = cameras::cameras().into_iter().find(|c| cameras::display_id(&c.id) == id) else {
+        let Some(camera) = cameras::cameras()
+            .into_iter()
+            .find(|c| display_id(&c.id) == id)
+        else {
             return Err(crate::features::stream_control::publisher::refuse(
                 farwing_protocol::peer::error_code::NOT_FOUND,
                 crate::features::stream_control::wire::display_reason::NOT_FOUND,
@@ -913,7 +915,7 @@ impl Screens {
             "{}",
             t().features.peer_lease_expired
         );
-        if crate::features::host::cameras::is_camera(id) {
+        if is_camera(id) {
             self.prepare_video().await?;
             return self.start_camera(id, track).await;
         }
@@ -1113,7 +1115,7 @@ impl Screens {
             self.slots[index].awaiting_source = false;
             self.slots[index].suspended = self.slots[index].screen().cloned();
             self.stop_at(index).await;
-        } else if crate::features::host::cameras::is_camera(screen) {
+        } else if is_camera(screen) {
             // A camera not shown: nothing to stop.
         } else {
             let mut known = self.headless.knows_screen(screen);

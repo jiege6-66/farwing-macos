@@ -2,6 +2,24 @@
 //! camera offers and how one is opened, independent of the capture API.
 use serde::{Deserialize, Serialize};
 
+/// Display IDs of cameras: this bit set, the rest from the camera's ID.
+pub(crate) const DISPLAY_ID_BIT: i32 = 0x4000_0000;
+
+/// The display ID `camera` takes in the display list (stable across
+/// sessions: from its device link).
+pub(crate) fn display_id(camera: &str) -> i32 {
+    let mut hash = 0x811c_9dc5u32;
+    for byte in camera.bytes() {
+        hash = (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193);
+    }
+    DISPLAY_ID_BIT | (hash & 0x0fff_ffff) as i32
+}
+
+/// Whether display `id` is a camera.
+pub(crate) fn is_camera(id: i32) -> bool {
+    id > 0 && id & DISPLAY_ID_BIT != 0
+}
+
 /// How a camera delivers pictures, in the default order of preference.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -244,6 +262,15 @@ pub(crate) struct ControlState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn camera_display_ids_are_stable_and_apart_from_screens() {
+        let id = display_id(r"\\?\usb#vid_0bda&pid_58c2#camera");
+        assert_eq!(id, display_id(r"\\?\usb#vid_0bda&pid_58c2#camera"));
+        assert!(is_camera(id));
+        assert!(!is_camera(0) && !is_camera(1) && !is_camera(-1));
+        assert_ne!(id, display_id("synthetic"));
+    }
 
     fn mode(width: u32, height: u32, fps: u32, format: PixelFormat) -> Mode {
         Mode {

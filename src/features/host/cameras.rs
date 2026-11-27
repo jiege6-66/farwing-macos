@@ -1,28 +1,10 @@
 //! The host's cameras for its participants (`docs/protocol/camera-design.md`
-//! §4): the inventory, the display IDs cameras take in the display list, and
-//! which parameters a running camera uses (the first viewer's).
+//! §4): the inventory and which parameters a running camera uses (the first
+//! viewer's).
 use crate::media::camera::{Camera, Spec};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
-
-/// Display IDs of cameras: this bit set, the rest from the camera's ID.
-pub(crate) const DISPLAY_ID_BIT: i32 = 0x4000_0000;
-
-/// The display ID `camera` takes in the display list (stable across
-/// sessions: from its device link).
-pub(crate) fn display_id(camera: &str) -> i32 {
-    let mut hash = 0x811c_9dc5u32;
-    for byte in camera.bytes() {
-        hash = (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193);
-    }
-    DISPLAY_ID_BIT | (hash & 0x0fff_ffff) as i32
-}
-
-/// Whether display `id` is a camera.
-pub(crate) fn is_camera(id: i32) -> bool {
-    id > 0 && id & DISPLAY_ID_BIT != 0
-}
 
 /// A listing this recent is used as it is.
 const FRESH: Duration = Duration::from_secs(5);
@@ -228,18 +210,4 @@ pub(crate) fn viewers(camera: &str) -> usize {
 /// Who chose the parameters `camera` runs with, if it runs.
 pub(crate) fn chosen_by(camera: &str) -> Option<String> {
     running().get(camera).map(|r| r.chosen_by.clone())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn camera_display_ids_are_stable_and_apart_from_screens() {
-        let id = display_id(r"\\?\usb#vid_0bda&pid_58c2#camera");
-        assert_eq!(id, display_id(r"\\?\usb#vid_0bda&pid_58c2#camera"));
-        assert!(is_camera(id));
-        assert!(!is_camera(0) && !is_camera(1) && !is_camera(-1));
-        assert_ne!(id, display_id("synthetic"));
-    }
 }

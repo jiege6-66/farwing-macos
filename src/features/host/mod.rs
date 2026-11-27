@@ -18,7 +18,6 @@ mod fec;
 pub(crate) mod files;
 pub(crate) mod forwarding;
 pub(crate) mod format;
-pub(crate) mod hevc;
 pub(crate) mod input;
 mod keyframe;
 pub(crate) mod microphone;

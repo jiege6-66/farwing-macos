@@ -12,7 +12,7 @@ mod peer;
 mod receive;
 pub(crate) mod recovery;
 mod statistics;
-mod tracks;
+pub(crate) mod tracks;
 mod workers;
 
 pub use channels::DATA_CHANNEL_LABELS;
