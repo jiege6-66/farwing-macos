@@ -6,6 +6,7 @@ plain names shown here.
 | Item | Farwing value |
 |------|---------------|
 | Executable / launcher | `Farwing.exe` / `Farwing-launcher.exe` |
+| macOS app bundle | `Farwing.app`, bundle identifier `io.github.djkcyl.farwing` |
 | Program directory | `%ProgramFiles%\Farwing\Farwing.exe` |
 | Component staging | `%ProgramFiles%\FarwingComponents\package-*` |
 | Machine data / service vault | `%ProgramData%\Farwing\host` |

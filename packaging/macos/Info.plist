@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>io.github.djkcyl.farwing</string>
+    <key>CFBundleExecutable</key>
+    <string>Farwing</string>
+    <key>CFBundleName</key>
+    <string>Farwing</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleVersion</key>
+    <string>0.1.0</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Farwing 使用麦克风，将你的声音发送到当前连接的远端设备。</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Farwing 访问局域网以发现和连接附近的设备，以及连接局域网内的服务器。</string>
+</dict>
+</plist>

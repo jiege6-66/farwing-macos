@@ -127,7 +127,7 @@
 
 ### 1.4 检查
 
-- Mac：`cargo check --locked --target aarch64-apple-darwin`（M0 起进 CI），阶段验收做原生 `cargo build` 并运行。
+- Mac：`.github/workflows/macos-check.yml` 只在推送 `feat/macos-controller-m0` 时自动运行，可在工作流进入默认分支前取得基线；不监听 PR。进入默认分支后，也可在 GitHub Actions 的 **macOS arm64 check** 中选择 **Run workflow**。它在 arm64 runner 上用 Rust 1.95.0 执行 `cargo check --locked --target aarch64-apple-darwin`，保留失败退出码，失败时也尝试上传 `macos-arm64-check` 日志。阶段验收另做原生 `cargo build` 并运行。
 - Windows：`cargo build --release`、`cargo fast-test --lib`，以及对应阶段的 `docs/manual-test-checklist.md` 条目。
 
 ## 2. 与被控代码解耦
@@ -378,10 +378,36 @@ M5 时按实际依赖确定，写回本节。
 
 ### 8.3 `.app` 与签名
 
-- M0 就做最小的 `.app`：固定 bundle id、Apple 签发的开发签名、`Info.plist` 写好 `NSMicrophoneUsageDescription`、`NSLocalNetworkUsageDescription`。
-- 构建后由脚本组装 `.app`（`xtask` 增加 macOS 目标）；公证、DMG、自动更新不在本文。
-- 涉及权限的验收都从 Finder 启动 `.app`，在干净的用户账号下测首次允许、拒绝、撤销、重启后的行为。
-- 判别测试：服务器放在 192.168.x 地址，同一个已签名二进制分别从 Finder 启动并拒绝本地网络、从 Terminal 启动。前者登录失败、后者成功，说明验收必须基于 `.app`。录屏以外的 TCC 权限（麦克风）是否也按负责进程归到 Terminal，同样用这两种启动方式比较【待测】。
+M0 的独立组装脚本 `packaging/macos/build_app.py` 接收已构建的单架构 arm64 macOS Mach-O 可执行文件，在已有的输出目录下生成 `Farwing.app`。`packaging/macos/Info.plist` 固定 bundle id `io.github.djkcyl.farwing`、`NSMicrophoneUsageDescription` 和 `NSLocalNetworkUsageDescription`。脚本要求显式提供有效的 Apple Development identity SHA-1，拒绝 `-`，不降级；在临时目录完成签名及 `codesign --verify --strict` 后才发布，不覆盖现有输出。暂不接入 `xtask`；公证、DMG、自动更新不在本文。
+
+在有 Xcode 命令行工具（含 Python 3）的 Mac 上，从仓库根目录运行：
+
+```sh
+# 不需要私钥：检查 plist、Mach-O 平台、已有输出和签名失败路径。
+/usr/bin/python3 packaging/macos/test_build_app.py
+
+# 仅在本机用 security find-identity -v -p codesigning 查看身份，
+# 将选定 Apple Development identity 的 SHA-1 存入 SIGN_ID；不要记录身份列表。
+# 此测试临时编译最小 C 程序，仅返回 0，不联网、不请求权限；
+# 严格验签后独立检查签名标识符和内嵌叶证书。
+FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_build_app.py
+
+# 单独组装：EXE 指向另行构建的可执行文件，OUT_DIR 是已有且不含 Farwing.app 的目录。
+/usr/bin/python3 packaging/macos/build_app.py \
+  --executable "$EXE" --output-dir "$OUT_DIR" --sign-identity "$SIGN_ID"
+/usr/bin/codesign --verify --strict "$OUT_DIR/Farwing.app"
+```
+
+本机 arm64 macOS 15.6 已用临时 C 载荷通过 Apple Development 签名和严格验证；另从产物确认签名标识符为 `io.github.djkcyl.farwing`，内嵌叶证书 SHA-1 与选定身份一致。**这不是客户端构建，也不是权限通过**。Keychain 查询和签名各有 15 秒时限；失败或超时就停止，不改 Keychain、授权或签名方式。
+
+手动待验（有实际业务载荷后，在干净用户账号的 macOS 15.1+ 上进行）：
+
+- 从 Finder 启动开发签名的 `.app`，分别验证本地网络和麦克风首次允许、拒绝、撤销、重启后的行为。
+- 本地网络判别（同一已签名 `.app`、同一 `192.168.x.x` 服务器）：
+  1. 先从 Finder 启动，允许本地网络访问并确认能登录，作为对照基线。
+  2. 拒绝本地网络访问（已允许时在系统设置撤销），退出后从 Finder 重新启动，验证登录是否失败。
+  3. 完全退出 Finder 启动的实例，保持拒绝状态，在 Terminal 直接执行 `"$OUT_DIR/Farwing.app/Contents/MacOS/Farwing"`（不要用 `open`），重复登录并记录结果。
+- 麦克风也比较两种启动方式，核对权限是否归到 Terminal【待测】。
 
 ## 9. 风险
 
@@ -405,7 +431,7 @@ M5 时按实际依赖确定，写回本节。
 | `docs/protocol/peer-messages.md:78`：映射表在 `src/platform/windows/input/keyboard.rs` | §6.2 之后，usage 判断在共用层，Windows 扫描码表仍在该文件；同步修改此句 |
 | `docs/protocol/web-control-brief.md`、`rfi-ltr-brief.md`：“原生”指 Windows 客户端主控 | 实现后“原生主控”包括 Mac；相关结论按平台复核 |
 | `build.rs:4-5` 的断言信息：“other platform backends were removed” | 指 v0.3.0（`572014b`）删除的 Linux / Apple 解码器；本工作重新引入 macOS 后端 |
-| `docs/dev/identity.md` 只有 Windows 一栏 | 补 macOS 的 bundle id、数据目录、Keychain 服务名、socket 与锁文件路径 |
+| `docs/dev/identity.md` | M0 已登记 macOS bundle id；数据目录、Keychain 服务名、socket 与锁文件路径随实现补齐 |
 
 ## 11. 实现清单（按顺序）
 
@@ -413,7 +439,7 @@ M5 时按实际依赖确定，写回本节。
 
 | 步 | 内容 | 验收 |
 |---|---|---|
-| M0 | 安装 Rust 1.95 与 Xcode 命令行工具；Mac CI 跑 `cargo check --locked --target aarch64-apple-darwin`（预期失败，失败项即 M1 清单）；最小签名 `.app` 骨架；§8.3 的判别测试 | CI 有记录；判别测试结果写回 §8.3 |
+| M0 | 开发机安装 Rust 1.95.0 和 Xcode 命令行工具；Mac CI 在 macOS 开发分支用 Rust 1.95.0 跑 `cargo check --locked --target aarch64-apple-darwin`（编译阻断归 M1）；独立开发签名 `.app` 骨架；§8.3 的权限判别 | 骨架可组装且通过严格签名校验（已验证）；GitHub CI 实际日志、§8.3 真机权限结果待补 |
 | M1 | 构建：§1 的依赖、`build.rs`、`lib.rs`、命令取舍；§2 的被控运行时按平台编入、共享类型搬出；平台层建立 `macos` 目录并只导出已实现的模块 | Mac `cargo check` 通过；Windows 构建与回归通过，行为不变 |
 | M2 | 命令行登录：§3 的平台身份、空能力集合、硬件信息、数据与日志目录、Keychain；`Server`、`Login`、`Devices`、`Friend`、`Grant`、`Sessions` | 签名 `.app` 内的二进制能设置服务器、登录、列设备；Windows 主控的设备列表里这台 Mac 显示为 macOS、不可连接；登出后 Keychain 清理 |
 | M3 | 无窗口解码：§5.2–§5.4（A1–A3、VT 解码器、能力探测、软件槽）；`dev video` | Mac `dev video` 连 Windows 被控：H.264、HEVC（及硬件支持时的 AV1）持续解码，统计与 Windows 主控同量级；V3 结果写回 §5.4 |
@@ -432,4 +458,5 @@ M5 时按实际依赖确定，写回本节。
 
 | 步 | 状态 |
 |---|---|
-| M0–M9 | 未开始 |
+| M0 | 包装脚本、测试和开发分支 CI 已配置；本机 Apple Development 签名、严格验签、标识符和证书核对通过。当前机器有 Xcode 命令行工具，但未找到 `cargo` / `rustup`；未实际运行 GitHub workflow，权限判别待验（§8.3）。 |
+| M1–M9 | 未开始 |

@@ -1,0 +1,45 @@
+name: macOS arm64 check
+
+on:
+  push:
+    branches:
+      - 'feat/macos-controller-m0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Check with Rust 1.95.0
+        shell: bash
+        run: |
+          set +e
+          (
+            set -e
+            if [[ $(uname -m) != arm64 ]]; then
+              echo "This job requires an arm64 macOS runner" >&2
+              exit 1
+            fi
+            rustup toolchain install 1.95.0 --profile minimal --target aarch64-apple-darwin
+            cargo +1.95.0 check --locked --target aarch64-apple-darwin
+          ) 2>&1 | tee "$RUNNER_TEMP/macos-check.log"
+          status=("${PIPESTATUS[@]}")
+          # Preserve the check/setup failure; also fail if logging alone failed.
+          if (( status[0] != 0 )); then
+            exit "${status[0]}"
+          fi
+          exit "${status[1]}"
+
+      - name: Upload macOS check log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64-check
+          path: ${{ runner.temp }}/macos-check.log
