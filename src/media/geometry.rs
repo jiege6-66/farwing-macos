@@ -1,4 +1,4 @@
-//! Verified sender geometry rules, independent of capture/renderer APIs.
+//! Verified sender geometry and tier bitrate-ceiling rules, independent of capture/renderer APIs.
 /// Local presentation only. Never feeds capture settings or physical modes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum DisplayAspect {

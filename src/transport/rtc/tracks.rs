@@ -1,4 +1,4 @@
-//! Track subscriptions, frame ownership and decoder completion feedback.
+//! Negotiated track pool constants, subscriptions, frame ownership and decoder completion feedback.
 use super::workers::std_mutex_lock;
 use crate::diagnostics::performance::PerformanceMonitor;
 use crate::media::VideoCodec;

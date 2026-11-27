@@ -12,10 +12,11 @@ mod peer;
 mod receive;
 pub(crate) mod recovery;
 mod statistics;
-pub(crate) mod tracks;
+mod tracks;
 mod workers;
 
 pub use channels::DATA_CHANNEL_LABELS;
+pub(crate) use tracks::{LISTEN_TRACK, TRACK_COUNT};
 pub(crate) use core::ConnectionCore;
 pub(crate) use statistics::connection_route;
 pub(crate) use negotiation::negotiated_mixed_kcp_version;

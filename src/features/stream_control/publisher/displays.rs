@@ -220,7 +220,7 @@ async fn capture_request(session: &mut Screens, capture: &CaptureControl) -> Res
         Some(track) => {
             let track = usize::try_from(track)
                 .ok()
-                .filter(|track| *track < crate::transport::rtc::tracks::TRACK_COUNT)
+                .filter(|track| *track < crate::transport::rtc::TRACK_COUNT)
                 .ok_or_else(|| refuse(error_code::BAD_REQUEST, display_reason::INVALID))?;
             session.start_on(capture.screen_id, Some(track)).await
         }

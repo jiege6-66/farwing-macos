@@ -1,7 +1,7 @@
 //! Controlled desktop connection: session-scoped peer, capture owner and RTP sender.
 use crate::i18n::t;
 use super::{VideoConfig, capture, lock};
-use crate::transport::rtc::{ConnectionCore, tracks::LISTEN_TRACK};
+use crate::transport::rtc::{ConnectionCore, LISTEN_TRACK};
 use anyhow::Result;
 use std::{
     sync::{

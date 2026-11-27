@@ -7,7 +7,7 @@ use crate::features::host::{
 };
 use crate::media::camera::{display_id, is_camera};
 use crate::platform::display::topology::{Target, Topology};
-use crate::transport::rtc::tracks::TRACK_COUNT;
+use crate::transport::rtc::TRACK_COUNT;
 use anyhow::{Context, Result, ensure};
 use std::{
     collections::BTreeMap,

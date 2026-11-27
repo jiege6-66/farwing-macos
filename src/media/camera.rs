@@ -1,5 +1,6 @@
-//! Cameras as video sources (`docs/protocol/camera-design.md` §3): what a
-//! camera offers and how one is opened, independent of the capture API.
+//! Cameras as video sources (`docs/protocol/camera-design.md`): what a
+//! camera offers and how it is opened (§3), and the IDs cameras take in
+//! the display list (§4). Independent of the capture API.
 use serde::{Deserialize, Serialize};
 
 /// Display IDs of cameras: this bit set, the rest from the camera's ID.
