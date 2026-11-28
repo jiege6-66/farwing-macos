@@ -48,12 +48,14 @@ impl Timer {
     }
 
     pub fn arm(&mut self, deadline: Instant) -> Result<()> {
+        // Runtime shutdown can finish a pending task without publishing a wake.
         if self.armed.as_ref().is_some_and(|armed| {
             armed.deadline == deadline
                 && matches!(
                     *armed.state.lock().unwrap_or_else(|p| p.into_inner()),
                     WakeState::Pending
                 )
+                && !armed.task.is_finished()
         }) {
             return Ok(());
         }
@@ -117,6 +119,7 @@ mod tests {
     use super::{TestHook, Timer};
     use std::sync::{Arc, mpsc};
     use std::time::{Duration, Instant};
+    use tokio::runtime::Builder;
     use tokio::sync::Notify;
     use tokio::time::timeout;
 
@@ -143,6 +146,29 @@ mod tests {
     }
 
     const WAIT: Duration = Duration::from_secs(2);
+
+    #[test]
+    fn same_deadline_rearms_after_runtime_shutdown() {
+        let new_runtime = || Builder::new_current_thread().enable_time().build().unwrap();
+        let wake = Arc::new(Notify::new());
+        let mut timer = Timer::new(wake.clone()).unwrap();
+        let deadline = Instant::now();
+        let runtime_a = new_runtime();
+        {
+            let _entered = runtime_a.enter();
+            timer.arm(deadline).unwrap();
+        }
+        // Without driving this current-thread runtime, shutdown cancels the
+        // queued task before it can publish a wake.
+        drop(runtime_a);
+
+        new_runtime().block_on(async {
+            timer.arm(deadline).unwrap();
+            timeout(WAIT, wake.notified())
+                .await
+                .expect("the same deadline must fire on the new runtime");
+        });
+    }
 
     fn pause_task() -> (TestHook, mpsc::Receiver<()>, mpsc::Sender<()>) {
         let (entered, paused) = mpsc::channel();
