@@ -2,18 +2,18 @@
 //! session, for verifying host-side injection (`docs/protocol/v2-design.md`
 //! §7) without a viewer window.
 //!
-//! Keys are named by their physical position on a US layout and sent as the
-//! HID usage of that position (the same scan-code table viewers use), so the
-//! host's own layout and IME decide what they produce.
+//! Keys are named by their physical position on a US layout and sent as HID
+//! usages, just like viewer input, so the host's layout and IME decide what
+//! they produce.
+use crate::features::remote_input::keys::{CONSUMER as C, KEYBOARD as K};
 use crate::features::remote_input::{MouseMode, RemoteInput};
-use crate::platform::windows::input::keyboard;
 use crate::protocol::input::SystemCommand;
 use anyhow::{Context as _, Result, anyhow, bail, ensure};
 use std::time::Duration;
 
 /// Input owner of the script (a viewer uses its window handle).
 const OWNER: u64 = 0x6465_7669;
-const LEFT_SHIFT: u16 = 0x2a;
+const LEFT_SHIFT: u32 = K | 0xe1;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Key {
@@ -75,154 +75,139 @@ pub(crate) enum Step {
     Pull,
 }
 
-/// Set-1 scan code of a US-layout character and whether it needs Shift.
-fn char_scan(c: char) -> Option<(u16, bool)> {
-    const LETTERS: [u16; 26] = [
-        0x1e, 0x30, 0x2e, 0x20, 0x12, 0x21, 0x22, 0x23, 0x17, 0x24, 0x25, 0x26, 0x32, 0x31, 0x18,
-        0x19, 0x10, 0x13, 0x1f, 0x14, 0x16, 0x2f, 0x11, 0x2d, 0x15, 0x2c,
-    ];
-    const DIGITS: [u16; 10] = [0x0b, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a];
-    Some(match c {
-        'a'..='z' => (LETTERS[(c as u8 - b'a') as usize], false),
-        'A'..='Z' => (LETTERS[(c as u8 - b'A') as usize], true),
-        '0'..='9' => (DIGITS[(c as u8 - b'0') as usize], false),
-        ')' => (0x0b, true),
-        '!' => (0x02, true),
-        '@' => (0x03, true),
-        '#' => (0x04, true),
-        '$' => (0x05, true),
-        '%' => (0x06, true),
-        '^' => (0x07, true),
-        '&' => (0x08, true),
-        '*' => (0x09, true),
-        '(' => (0x0a, true),
-        '-' => (0x0c, false),
-        '_' => (0x0c, true),
-        '=' => (0x0d, false),
-        '+' => (0x0d, true),
-        '[' => (0x1a, false),
-        '{' => (0x1a, true),
-        ']' => (0x1b, false),
-        '}' => (0x1b, true),
-        '\\' => (0x2b, false),
-        '|' => (0x2b, true),
-        ';' => (0x27, false),
-        ':' => (0x27, true),
-        '\'' => (0x28, false),
-        '"' => (0x28, true),
-        '`' => (0x29, false),
-        '~' => (0x29, true),
-        ',' => (0x33, false),
-        '<' => (0x33, true),
-        '.' => (0x34, false),
-        '>' => (0x34, true),
-        '/' => (0x35, false),
-        '?' => (0x35, true),
-        ' ' => (0x39, false),
-        '\n' => (0x1c, false),
-        '\t' => (0x0f, false),
+/// HID usage of a US-layout character and whether it needs Shift.
+fn char_usage(c: char) -> Option<(u32, bool)> {
+    let (id, shift) = match c {
+        'a'..='z' => (0x04 + u32::from(c as u8 - b'a'), false),
+        'A'..='Z' => (0x04 + u32::from(c as u8 - b'A'), true),
+        '1'..='9' => (0x1e + u32::from(c as u8 - b'1'), false),
+        '0' => (0x27, false),
+        ')' => (0x27, true),
+        '!' => (0x1e, true),
+        '@' => (0x1f, true),
+        '#' => (0x20, true),
+        '$' => (0x21, true),
+        '%' => (0x22, true),
+        '^' => (0x23, true),
+        '&' => (0x24, true),
+        '*' => (0x25, true),
+        '(' => (0x26, true),
+        '-' => (0x2d, false),
+        '_' => (0x2d, true),
+        '=' => (0x2e, false),
+        '+' => (0x2e, true),
+        '[' => (0x2f, false),
+        '{' => (0x2f, true),
+        ']' => (0x30, false),
+        '}' => (0x30, true),
+        '\\' => (0x31, false),
+        '|' => (0x31, true),
+        ';' => (0x33, false),
+        ':' => (0x33, true),
+        '\'' => (0x34, false),
+        '"' => (0x34, true),
+        '`' => (0x35, false),
+        '~' => (0x35, true),
+        ',' => (0x36, false),
+        '<' => (0x36, true),
+        '.' => (0x37, false),
+        '>' => (0x37, true),
+        '/' => (0x38, false),
+        '?' => (0x38, true),
+        ' ' => (0x2c, false),
+        '\n' => (0x28, false),
+        '\t' => (0x2b, false),
         _ => return None,
-    })
+    };
+    Some((K | id, shift))
 }
 
-/// Set-1 scan code of a named key (`0xE0xx` for extended keys).
-fn named_scan(name: &str) -> Option<u16> {
+/// HID usage of a named key, including consumer-page media keys.
+fn named_usage(name: &str) -> Option<u32> {
     Some(match name {
-        "enter" | "return" => 0x1c,
-        "esc" | "escape" => 0x01,
-        "tab" => 0x0f,
-        "backspace" => 0x0e,
-        "space" => 0x39,
-        "equal" => 0x0d,
-        "capslock" => 0x3a,
-        "numlock" => 0xe045,
-        "scrolllock" => 0x46,
-        "pause" => 0x45,
-        "printscreen" => 0xe037,
-        "insert" => 0xe052,
-        "delete" | "del" => 0xe053,
-        "home" => 0xe047,
-        "end" => 0xe04f,
-        "pageup" => 0xe049,
-        "pagedown" => 0xe051,
-        "up" => 0xe048,
-        "down" => 0xe050,
-        "left" => 0xe04b,
-        "right" => 0xe04d,
-        "apps" | "menu" => 0xe05d,
-        "ctrl" | "lctrl" => 0x1d,
-        "rctrl" => 0xe01d,
-        "shift" | "lshift" => 0x2a,
-        "rshift" => 0x36,
-        "alt" | "lalt" => 0x38,
-        "ralt" | "altgr" => 0xe038,
-        "win" | "lwin" => 0xe05b,
-        "rwin" => 0xe05c,
-        "volumeup" => 0xe030,
-        "volumedown" => 0xe02e,
-        "mute" | "volumemute" => 0xe020,
-        "mediaplaypause" | "playpause" => 0xe022,
-        "mediastop" => 0xe024,
-        "medianext" | "nexttrack" => 0xe019,
-        "mediaprev" | "prevtrack" => 0xe010,
-        "kpenter" => 0xe01c,
-        "kpplus" => 0x4e,
-        "kpminus" => 0x4a,
-        "kpmultiply" => 0x37,
-        "kpdivide" => 0xe035,
-        "kpdecimal" => 0x53,
-        "kp0" => 0x52,
-        "kp1" => 0x4f,
-        "kp2" => 0x50,
-        "kp3" => 0x51,
-        "kp4" => 0x4b,
-        "kp5" => 0x4c,
-        "kp6" => 0x4d,
-        "kp7" => 0x47,
-        "kp8" => 0x48,
-        "kp9" => 0x49,
+        "enter" | "return" => K | 0x28,
+        "esc" | "escape" => K | 0x29,
+        "tab" => K | 0x2b,
+        "backspace" => K | 0x2a,
+        "space" => K | 0x2c,
+        "equal" => K | 0x2e,
+        "capslock" => K | 0x39,
+        "numlock" => K | 0x53,
+        "scrolllock" => K | 0x47,
+        "pause" => K | 0x48,
+        "printscreen" => K | 0x46,
+        "insert" => K | 0x49,
+        "delete" | "del" => K | 0x4c,
+        "home" => K | 0x4a,
+        "end" => K | 0x4d,
+        "pageup" => K | 0x4b,
+        "pagedown" => K | 0x4e,
+        "up" => K | 0x52,
+        "down" => K | 0x51,
+        "left" => K | 0x50,
+        "right" => K | 0x4f,
+        "apps" | "menu" => K | 0x65,
+        "ctrl" | "lctrl" => K | 0xe0,
+        "rctrl" => K | 0xe4,
+        "shift" | "lshift" => LEFT_SHIFT,
+        "rshift" => K | 0xe5,
+        "alt" | "lalt" => K | 0xe2,
+        "ralt" | "altgr" => K | 0xe6,
+        "win" | "lwin" => K | 0xe3,
+        "rwin" => K | 0xe7,
+        "volumeup" => C | 0xe9,
+        "volumedown" => C | 0xea,
+        "mute" | "volumemute" => C | 0xe2,
+        "mediaplaypause" | "playpause" => C | 0xcd,
+        "mediastop" => C | 0xb7,
+        "medianext" | "nexttrack" => C | 0xb5,
+        "mediaprev" | "prevtrack" => C | 0xb6,
+        "kpenter" => K | 0x58,
+        "kpplus" => K | 0x57,
+        "kpminus" => K | 0x56,
+        "kpmultiply" => K | 0x55,
+        "kpdivide" => K | 0x54,
+        "kpdecimal" => K | 0x63,
+        "kp0" => K | 0x62,
+        "kp1" => K | 0x59,
+        "kp2" => K | 0x5a,
+        "kp3" => K | 0x5b,
+        "kp4" => K | 0x5c,
+        "kp5" => K | 0x5d,
+        "kp6" => K | 0x5e,
+        "kp7" => K | 0x5f,
+        "kp8" => K | 0x60,
+        "kp9" => K | 0x61,
         _ => {
             let number = name.strip_prefix('f')?.parse::<u16>().ok()?;
             match number {
-                1..=10 => 0x3a + number,
-                11 => 0x57,
-                12 => 0x58,
+                1..=12 => K | (0x39 + u32::from(number)),
                 _ => return None,
             }
         }
     })
 }
 
-fn usage_of(scan: u16) -> Result<u32> {
-    keyboard::usage(scan).with_context(|| format!("扫描码 {scan:#06x} 没有对应的 HID usage"))
-}
-
 /// A key by name, or a single character key (Shift not included: `key a`
 /// presses the A key; use `text A` or `key shift+a` for a capital).
 fn parse_key(name: &str) -> Result<Key> {
     let lower = name.to_ascii_lowercase();
-    let scan = named_scan(&lower)
+    let usage = named_usage(&lower)
         .or_else(|| {
             let mut chars = name.chars();
             match (chars.next(), chars.next()) {
-                (Some(c), None) => char_scan(c.to_ascii_lowercase()).map(|(scan, _)| scan),
+                (Some(c), None) => char_usage(c.to_ascii_lowercase()).map(|(usage, _)| usage),
                 _ => None,
             }
         })
         .with_context(|| format!("未知按键 {name}"))?;
-    Ok(Key {
-        name: lower,
-        usage: usage_of(scan)?,
-    })
+    Ok(Key { name: lower, usage })
 }
 
 /// The keys of one character of `text`: optional Shift, then the key.
 pub(crate) fn char_keys(c: char) -> Result<(Option<u32>, u32)> {
-    let (scan, shift) = char_scan(c).with_context(|| format!("无法按美式键位输入字符 {c:?}"))?;
-    Ok((
-        shift.then(|| usage_of(LEFT_SHIFT)).transpose()?,
-        usage_of(scan)?,
-    ))
+    let (usage, shift) = char_usage(c).with_context(|| format!("无法按美式键位输入字符 {c:?}"))?;
+    Ok((shift.then_some(LEFT_SHIFT), usage))
 }
 
 fn unescape(text: &str) -> Result<String> {
@@ -636,8 +621,6 @@ fn pull_text(exchange: &crate::features::clipboard::Clipboard) -> Result<String>
 #[cfg(test)]
 mod tests {
     use super::*;
-    const K: u32 = keyboard::KEYBOARD;
-    const C: u32 = keyboard::CONSUMER;
 
     #[test]
     fn text_maps_to_us_positions() {
@@ -664,9 +647,8 @@ mod tests {
         }
     }
 
-    #[cfg(windows)]
     #[test]
-    fn script_parses_every_step() {
+    fn script_parses_keyboard_and_mouse_steps() {
         let script = "\
 # Notepad check
 text Hello, World! 123\\n
@@ -689,10 +671,9 @@ key volumeup
 key f12
 key kp7
 sleep 100
-pull
 ";
         let steps = parse_script(script, false).unwrap();
-        assert_eq!(steps.len(), 21);
+        assert_eq!(steps.len(), 20);
         assert_eq!(steps[0], Step::Text("Hello, World! 123\n".into()));
         let Step::Chord(keys) = &steps[2] else { panic!() };
         assert_eq!(
@@ -715,7 +696,90 @@ pull
         let Step::Chord(keys) = &steps[18] else { panic!() };
         assert_eq!(keys[0].usage, K | 0x5f);
         assert_eq!(steps[19], Step::Sleep(Duration::from_millis(100)));
-        assert_eq!(steps[20], Step::Pull);
+    }
+
+    #[test]
+    fn clipboard_pull_is_windows_only() {
+        #[cfg(windows)]
+        assert_eq!(parse_script("pull", false).unwrap(), [Step::Pull]);
+        #[cfg(not(windows))]
+        assert!(parse_script("pull", false).is_err());
+    }
+
+    #[tokio::test]
+    async fn script_emits_windows_input_frames() {
+        use crate::features::remote_input::InputWork;
+        use crate::protocol::input::{self as wire, InputKind};
+
+        let input = RemoteInput::default();
+        input.set_keyboard_platform(farwing_protocol::Platform::Windows);
+        input.set_ready(true);
+        input.enable(MouseMode::Local, false).unwrap();
+        input.confirm_neutral(input.activation_generation());
+        let runner = Runner {
+            input: input.clone(),
+            #[cfg(windows)]
+            exchange: crate::features::clipboard::Clipboard::memory(
+                crate::transport::transfer::kind::CLIPBOARD,
+            ),
+            screen: 1,
+            hold: Duration::ZERO,
+        };
+        let steps = parse_script(
+            "text A\nkey rctrl+volumeup\nclick x1\nrel -10 5\nwheel -120 240",
+            false,
+        )
+        .unwrap();
+        let key = |usage, down| {
+            InputKind::Key(wire::Key {
+                usage,
+                down,
+                repeat: false,
+            })
+        };
+        let button = |down| InputKind::MouseButton(wire::MouseButton { button: 32, down });
+        let expected = [
+            key(K | 0xe1, true),
+            key(K | 0x04, true),
+            key(K | 0x04, false),
+            key(K | 0xe1, false),
+            key(K | 0xe4, true),
+            key(C | 0xe9, true),
+            key(C | 0xe9, false),
+            key(K | 0xe4, false),
+            button(true),
+            button(false),
+            InputKind::MouseRelative(wire::MouseRelative { dx: -10, dy: 5 }),
+            InputKind::MouseWheel(wire::MouseWheel { dx: 240, dy: -120 }),
+        ];
+        let script = async {
+            for step in &steps {
+                runner.run(step).await.unwrap();
+            }
+        };
+        let transport = async {
+            let mut sent = Vec::new();
+            for _ in &expected {
+                let InputWork::Event(event) = input.next().await else {
+                    panic!("unexpected recovery");
+                };
+                sent.push(
+                    wire::decode(&event.event.encode())
+                        .unwrap()
+                        .unwrap()
+                        .kind
+                        .unwrap(),
+                );
+                input.complete(&event, Ok(()));
+            }
+            sent
+        };
+        let ((), sent) = tokio::time::timeout(Duration::from_secs(3), async {
+            tokio::join!(script, transport)
+        })
+        .await
+        .unwrap();
+        assert_eq!(sent, expected);
     }
 
     #[test]
