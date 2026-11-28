@@ -99,10 +99,18 @@ impl DecoderPreference {
     }
 }
 
+#[cfg(windows)]
 pub(crate) fn resolve_gpu(id: Option<GpuId>) -> Option<u64> {
     let id = id?;
     resolve_gpu_from(id, &crate::platform::capture::encoding_adapters().ok()?)
 }
+#[cfg(target_os = "macos")]
+pub(crate) fn resolve_gpu(_id: Option<GpuId>) -> Option<u64> {
+    // VideoToolbox chooses the decoding device; there is no adapter preference.
+    None
+}
+
+#[cfg(windows)]
 pub(crate) fn resolve_gpu_from(
     id: GpuId,
     adapters: &[crate::platform::capture::EncodingAdapter],

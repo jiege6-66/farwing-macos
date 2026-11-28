@@ -18,6 +18,10 @@ use windows::Win32::Graphics::Dxgi::{
 };
 use windows::core::Interface;
 
+pub(crate) type Surface = D3D11Surface;
+pub(crate) type SurfaceWriter = D3D11SurfaceWriter;
+pub(crate) type GpuDevice = ID3D11Device;
+
 #[derive(Clone)]
 pub(crate) struct D3D11SurfaceWriter {
     shared: Arc<D3D11Shared>,

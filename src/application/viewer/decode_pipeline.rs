@@ -10,6 +10,7 @@ use crate::media::decoder_pool::DecoderPool;
 use crate::media::decoder_result::VideoDecodeResult;
 use crate::media::video_color::RenderColor;
 use crate::media::video_format::{VideoFormatSignature, parse_stream_format};
+use crate::platform::surface::SurfaceWriter;
 use crate::transport::rtc::{EncodedVideoFrame, FrameSenderTiming, VideoReceiverFeedback};
 use anyhow::Result;
 use bytes::Bytes;
@@ -209,7 +210,7 @@ pub(super) struct DecoderConfig {
     pub(super) decode_idle: tokio::sync::watch::Sender<u64>,
     pub(super) pause_epoch: Arc<std::sync::atomic::AtomicU64>,
 
-    pub(super) surface_writer: Option<crate::platform::surface::D3D11SurfaceWriter>,
+    pub(super) surface_writer: Option<SurfaceWriter>,
     pub(super) observer: Option<std::sync::mpsc::Sender<DecodedObservation>>,
 }
 
@@ -621,7 +622,7 @@ pub(super) fn open_decoder_with_metadata(
     width: u32,
     height: u32,
     extra_data: Option<Bytes>,
-    surface_writer: Option<crate::platform::surface::D3D11SurfaceWriter>,
+    surface_writer: Option<SurfaceWriter>,
 ) -> Result<NativeVideoDecoder> {
     tracing::debug!(
         ?codec,

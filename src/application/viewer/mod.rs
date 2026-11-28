@@ -4,6 +4,8 @@ use crate::i18n::t;
 use crate::media::VideoCodec;
 use crate::media::decoder::RenderSurface;
 use crate::media::video_color::RenderColor;
+#[cfg(windows)]
+use crate::platform::surface::SurfaceWriter;
 use crate::transport::rtc::{
     EncodedVideoFrame, FrameSenderTiming, VideoFrameSink, VideoReceiverFeedback,
 };
@@ -102,7 +104,7 @@ impl RetryNow {
 #[derive(Clone, Default)]
 pub(crate) struct ViewerDisplayHandle {
     #[cfg(windows)]
-    pub surface_writer: Option<crate::platform::surface::D3D11SurfaceWriter>,
+    pub surface_writer: Option<SurfaceWriter>,
     /// The video presenter's device on the writer's adapter, created while
     /// the connection is made (taken once).
     #[cfg(windows)]
@@ -415,7 +417,7 @@ pub struct NativeViewerSession {
     /// The hardware decoder's surface writer: the video presenter can be
     /// built on its adapter while the first picture decodes.
     #[cfg(windows)]
-    presentation_writer: Option<crate::platform::surface::D3D11SurfaceWriter>,
+    presentation_writer: Option<SurfaceWriter>,
     #[cfg(windows)]
     presentation_device: PreparedRenderer,
     window_wake: Option<WindowWake>,

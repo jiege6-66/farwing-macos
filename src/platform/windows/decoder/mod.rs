@@ -9,6 +9,9 @@ use windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11Texture2D};
 mod diagnostics;
 mod rust_dxva;
 
+pub(crate) type PlatformVideoDecoder = WindowsVideoDecoder;
+pub(crate) type PlatformDecodedFrame = WindowsDecodedFrame;
+
 /// Decoded pictures not shown because every display surface was in use
 /// (diagnostics).
 pub(crate) fn display_busy_drops() -> u64 {

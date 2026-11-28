@@ -3,13 +3,12 @@
 #![forbid(unsafe_code)]
 
 use crate::media::VideoCodec;
-use windows::Win32::Graphics::Direct3D11::ID3D11Device;
 
 /// Decoder selected by the candidate owner; this layer never falls back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
 pub enum DecoderMode {
-    /// Return owning D3D11 frames.
+    /// Return owning native video frames.
     #[default]
     Hardware,
     /// Decode with the selected Rust software core.
@@ -27,8 +26,8 @@ pub struct VideoDecoderConfig {
     pub height: u32,
     /// Explicit hardware or software implementation.
     pub mode: DecoderMode,
-    /// Owning D3D11 device for hardware decoding.
-    pub gpu_device: Option<ID3D11Device>,
+    /// Owning GPU device, when the backend needs one for hardware decoding.
+    pub gpu_device: Option<crate::platform::surface::GpuDevice>,
     /// Annex-B codec parameter sets; may be empty until the first keyframe.
     pub extra_data: bytes::Bytes,
 }

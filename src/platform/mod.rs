@@ -3,7 +3,7 @@
 #[cfg(target_os = "macos")]
 pub(crate) mod macos;
 #[cfg(target_os = "macos")]
-pub(crate) use macos::{console, device_profile, locks};
+pub(crate) use macos::{console, device_profile, display, locks};
 #[cfg(windows)]
 pub(crate) mod windows;
 #[cfg(windows)]

@@ -31,7 +31,7 @@ pub(crate) struct DecoderPool {
 
     software_slot: Option<std::rc::Rc<crate::media::decoder::software_slot::SoftwareSlot>>,
 
-    writer: Option<crate::platform::surface::D3D11SurfaceWriter>,
+    writer: Option<crate::platform::surface::SurfaceWriter>,
 }
 
 pub(crate) struct DecoderTransition {
@@ -96,7 +96,7 @@ impl DecoderPool {
             && self
                 .candidates
                 .get(self.active)
-                .is_some_and(|entry| supports(entry.kind, self.codec, format))
+                .is_some_and(|entry| entry.kind.supports(self.codec, format))
         {
             self.format = Some(format);
         }
@@ -319,7 +319,7 @@ impl DecoderPool {
             // particular H264 4:4:4 belongs to the software candidate, rather
             // than losing its first keyframe to a predictable hardware error.
 
-            if format.is_some_and(|format| !supports(entry.kind, self.codec, format)) {
+            if format.is_some_and(|format| !entry.kind.supports(self.codec, format)) {
                 continue;
             }
 
@@ -364,29 +364,6 @@ impl DecoderPool {
             self.software_slot = None;
         }
         false
-    }
-}
-
-fn supports(kind: DecoderCandidate, codec: VideoCodec, format: VideoFormatSignature) -> bool {
-    match kind {
-        DecoderCandidate::WindowsD3d11 { .. } => {
-            (format.chroma_format_idc == 1
-                || matches!(codec, VideoCodec::H265 | VideoCodec::Av1)
-                    && format.chroma_format_idc == 3)
-                && format.bit_depth_luma == format.bit_depth_chroma
-                && (format.bit_depth_luma == 8
-                    || matches!(codec, VideoCodec::H265 | VideoCodec::Av1)
-                        && format.bit_depth_luma == 10)
-        }
-        DecoderCandidate::Software => {
-            farwing_codec::Format {
-                codec,
-                chroma: format.chroma_format_idc,
-                depth: format.bit_depth_luma,
-            }
-            .can_decode()
-                && format.bit_depth_luma == format.bit_depth_chroma
-        }
     }
 }
 
