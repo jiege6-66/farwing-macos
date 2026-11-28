@@ -166,8 +166,12 @@ windows = { version = "0.62.2", default-features = false, features = [
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2.189"
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSFileManager", "NSLocale", "NSPathUtilities", "NSString", "NSURL"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["CFDictionary", "CFString"] }
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["CGDirectDisplay"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSFileManager", "NSLocale", "NSPathUtilities", "NSProcessInfo", "NSString", "NSURL"] }
+system-configuration-sys = { version = "0.6.0", default-features = false }
 
 [patch.crates-io]
 dtls = { path = "vendor/dtls" }

@@ -9,8 +9,9 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::account::api::{ApiFailure, DeviceInitResponse, DevicePolicy, ErrorCode, ServerApi};
-use crate::account::server::ServerConfig;
 use crate::account::auth::{KeyringIdentityStore, NativeIdentity};
+use crate::account::hardware::Hardware;
+use crate::account::server::ServerConfig;
 
 #[derive(Clone)]
 pub(crate) struct DeviceHandle {
@@ -283,10 +284,7 @@ impl Initializer {
                             crate::account::reporting::update(|s| {
                                 s.registration = "正在读取本机信息".into()
                             });
-                            let hardware = tokio::task::spawn_blocking(
-                                crate::platform::windows::device_profile::Hardware::read,
-                            )
-                            .await??;
+                            let hardware = tokio::task::spawn_blocking(Hardware::read).await??;
                             let body = identity.device_init_request(&hardware)?;
                             crate::account::reporting::update(|s| {
                                 s.hardware = Some(hardware);

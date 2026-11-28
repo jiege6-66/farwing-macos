@@ -6,6 +6,7 @@
 
 use std::fmt;
 
+use crate::account::hardware::Hardware;
 use anyhow::{Context, Result, bail};
 use keyring::{Entry, Error as KeyringError};
 mod secret;
@@ -276,15 +277,12 @@ impl NativeIdentity {
         short_device_name(&self.client_id)
     }
 
-    pub(crate) fn device_init_request(
-        &self,
-        hardware: &crate::platform::windows::device_profile::Hardware,
-    ) -> Result<DeviceInitRequest> {
+    pub(crate) fn device_init_request(&self, hardware: &Hardware) -> Result<DeviceInitRequest> {
         self.validate_schema()?;
         Ok(DeviceInitRequest {
             installation_id: self.client_id.clone(),
             name: self.name.clone().unwrap_or_else(|| hardware.name.clone()),
-            platform: farwing_protocol::Platform::Windows,
+            platform: crate::platform::PLATFORM,
             os: hardware.os.clone(),
             version: env!("CARGO_PKG_VERSION").to_owned(),
             capabilities: crate::account::feature_ability::local_capabilities(),

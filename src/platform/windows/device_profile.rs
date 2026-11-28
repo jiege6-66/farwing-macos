@@ -1,7 +1,7 @@
 //! Windows device facts and the registered user's static desktop wallpaper.
+pub(crate) use crate::account::hardware::Hardware;
 use crate::i18n::t;
 use anyhow::{Context, Result, ensure};
-use serde::{Deserialize, Serialize};
 use std::{io::Read, path::PathBuf};
 use windows::{
     Win32::{
@@ -13,21 +13,6 @@ use windows::{
     },
     core::{PCWSTR, PWSTR},
 };
-
-#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Hardware {
-    pub name: String,
-    pub system_uuid: String,
-    pub machine_guid: String,
-    pub os: String,
-    pub base_board: String,
-    pub cpu: String,
-    pub video: Vec<String>,
-    pub mac: String,
-    pub memory: i64,
-    pub screen: String,
-    pub errors: Vec<String>,
-}
 
 pub(crate) fn registry_string(root: HKEY, key: &str, name: &str) -> Result<String> {
     let key: Vec<u16> = key.encode_utf16().chain(Some(0)).collect();

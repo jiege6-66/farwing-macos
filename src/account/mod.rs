@@ -5,6 +5,7 @@ pub mod assist;
 pub mod auth;
 pub mod client;
 pub(crate) mod device_change;
+pub(crate) mod hardware;
 pub(crate) mod http;
 pub mod login;
 pub(crate) mod notices;

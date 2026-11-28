@@ -69,7 +69,7 @@ pub(crate) fn device_name(native: &crate::account::auth::NativeIdentity) -> Stri
     native
         .device_name()
         .map(str::to_owned)
-        .or_else(|| crate::platform::windows::device_profile::computer_name().ok())
+        .or_else(|| crate::platform::device_profile::computer_name().ok())
         .unwrap_or_else(|| native.suggested_name())
 }
 
@@ -307,7 +307,7 @@ pub(crate) fn hello(
         device_id: local.identity.device_id.clone(),
         public_key: local.identity.public_key(),
         name: local.name.clone(),
-        platform: farwing_protocol::Platform::Windows,
+        platform: crate::platform::PLATFORM,
         version: env!("CARGO_PKG_VERSION").to_owned(),
         proof: local
             .identity

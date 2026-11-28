@@ -1,4 +1,5 @@
 //! macOS system integrations.
+pub(crate) mod device_profile;
 pub(crate) mod folders;
 pub(crate) mod locale;
 pub(crate) mod locks;

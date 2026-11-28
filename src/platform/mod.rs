@@ -3,11 +3,17 @@
 #[cfg(target_os = "macos")]
 pub(crate) mod macos;
 #[cfg(target_os = "macos")]
-pub(crate) use macos::locks;
+pub(crate) use macos::{device_profile, locks};
 #[cfg(windows)]
 pub(crate) mod windows;
 #[cfg(windows)]
 pub(crate) use windows::{
-    camera, capture, decoder, display, display_hdr, encoder, graphics, locks, source, surface,
-    swapchain, transfer, video_shader,
+    camera, capture, decoder, device_profile, display, display_hdr, encoder, graphics, locks,
+    source, surface, swapchain, transfer, video_shader,
 };
+
+/// This installation's platform for registration and direct connections.
+#[cfg(target_os = "macos")]
+pub(crate) const PLATFORM: farwing_protocol::Platform = farwing_protocol::Platform::Macos;
+#[cfg(windows)]
+pub(crate) const PLATFORM: farwing_protocol::Platform = farwing_protocol::Platform::Windows;

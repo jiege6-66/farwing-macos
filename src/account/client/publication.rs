@@ -1,7 +1,7 @@
 //! Registered-device publication owned by the active account, never a viewer.
 use super::*;
 use crate::{
-    account::reporting,
+    account::{hardware::Hardware, reporting},
     platform::windows::{device_profile, host_service::resident},
 };
 use serde::{Deserialize, Serialize};
@@ -75,8 +75,7 @@ impl AuthenticatedClient {
                     verify_owner(&device, &identity, &session).await?;
                     // Native collection has no network traffic. Only changed
                     // facts or an explicit refresh submit another init request.
-                    let hardware =
-                        tokio::task::spawn_blocking(device_profile::Hardware::read).await?;
+                    let hardware = tokio::task::spawn_blocking(Hardware::read).await?;
                     match hardware {
                         Ok(hardware)
                             if explicit

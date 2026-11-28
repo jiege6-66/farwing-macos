@@ -159,7 +159,7 @@ pub(super) async fn run_owner(
                 relation,
                 host_name: host.name.clone(),
                 controller_name: local.name.clone(),
-                controller_platform: farwing_protocol::Platform::Windows,
+                controller_platform: crate::platform::PLATFORM,
                 ..farwing_protocol::api::DirectRecord::default()
             }),
         );
