@@ -1,9 +1,10 @@
 //! Prepares one Farwing access unit at a time for CoreMedia. No FFI or session state.
 //!
 //! HEVC random access is not always closed: `Sample::hevc_vcl_nal_type` is 19/20
-//! for IDR, 16–18 for BLA and 21 for CRA. T2b must handle associated RASL
-//! (types 8/9) on entry at CRA/BLA; this module neither sends nor drops those
-//! pictures on behalf of the decoder. AVC recovery-point SEI is not an IDR.
+//! for IDR, 16–18 for BLA and 21 for CRA. The VideoToolbox layer (`vt.rs`,
+//! `HevcLeading`) drops the associated RASL pictures (types 8/9) on entry at
+//! CRA/BLA; this module neither sends nor drops those pictures itself. AVC
+//! recovery-point SEI is not an IDR.
 
 use std::{borrow::Cow, collections::BTreeMap};
 

@@ -369,7 +369,11 @@ fn h264_stream_switch_reset_errors_and_cancellation() {
 #[test]
 #[ignore = "requires VideoToolbox hardware and the external T2a ffmpeg streams"]
 fn vt_ffmpeg_streams_switch_resolution() {
-    let dir = std::path::PathBuf::from(std::env::var_os("FARWING_T2A_STREAMS").unwrap());
+    let Some(dir) = std::env::var_os("FARWING_T2A_STREAMS") else {
+        eprintln!("skipping: FARWING_T2A_STREAMS is not set");
+        return;
+    };
+    let dir = std::path::PathBuf::from(dir);
     let size = (160, 128);
     for (codec, name) in [(VideoCodec::H265, "hevc"), (VideoCodec::Av1, "av1")] {
         let data = std::fs::read(dir.join(format!("{name}.stream"))).unwrap();
@@ -410,7 +414,11 @@ fn vt_ffmpeg_streams_switch_resolution() {
 #[test]
 #[ignore = "requires VideoToolbox hardware and an x265 open-GOP stream with RASL"]
 fn vt_hevc_open_gop_rasl_and_reordering() {
-    let dir = std::path::PathBuf::from(std::env::var_os("FARWING_T2B_STREAMS").unwrap());
+    let Some(dir) = std::env::var_os("FARWING_T2B_STREAMS") else {
+        eprintln!("skipping: FARWING_T2B_STREAMS is not set");
+        return;
+    };
+    let dir = std::path::PathBuf::from(dir);
     let bytes = std::fs::read(dir.join("hevc-open-gop.stream")).unwrap();
     let csv = std::fs::read_to_string(dir.join("hevc-open-gop.csv")).unwrap();
     let packets: Vec<_> = csv
