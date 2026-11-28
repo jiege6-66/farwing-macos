@@ -6,3 +6,6 @@ pub(crate) mod folders;
 pub(crate) mod locale;
 pub(crate) mod locks;
 pub(crate) mod logging;
+
+// T2a: keep the bitstream helpers local until the VT decoder is implemented.
+pub(crate) mod decoder;

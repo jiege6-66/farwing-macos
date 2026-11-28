@@ -1,5 +1,5 @@
 //! Sequence metadata, parsed directly from AV1 section 5.5.
-use crate::bitstream::{bits::Bits, obu::Obu, Error, Result};
+use crate::bitstream::{Error, Result, bits::Bits, obu::Obu};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Chroma {
@@ -16,6 +16,10 @@ pub struct Sequence {
     pub max_height: u32,
     pub depth: u8,
     pub chroma: Chroma,
+    pub level_0: u8,
+    pub tier_0: bool,
+    pub chroma_sample_position: u8,
+    pub reduced_still_picture_header: bool,
 }
 
 impl Sequence {
@@ -35,9 +39,10 @@ impl Sequence {
         if reduced && !still {
             return Err(Error::Invalid);
         }
-        if reduced {
-            b.read(5)?;
+        let (level_0, tier_0) = if reduced {
+            (b.read(5)? as u8, false)
         } else {
+            let (mut level_0, mut tier_0) = (0, false);
             let mut model_delay_bits = None;
             if b.flag()? {
                 if b.read(32)? == 0 || b.read(32)? == 0 {
@@ -57,10 +62,12 @@ impl Sequence {
             }
             let initial_delay = b.flag()?;
             let count = b.read(5)? + 1;
-            for _ in 0..count {
+            for i in 0..count {
                 b.read(12)?;
-                if b.read(5)? > 7 {
-                    b.flag()?;
+                let level = b.read(5)? as u8;
+                let tier = level > 7 && b.flag()?;
+                if i == 0 {
+                    (level_0, tier_0) = (level, tier);
                 }
                 if let Some(n) = model_delay_bits {
                     if b.flag()? {
@@ -73,7 +80,8 @@ impl Sequence {
                     b.read(4)?;
                 }
             }
-        }
+            (level_0, tier_0)
+        };
         let width_bits = b.read(4)? + 1;
         let height_bits = b.read(4)? + 1;
         let max_width = b.read(width_bits)? + 1;
@@ -102,11 +110,7 @@ impl Sequence {
         }
         b.read(3)?; // super-resolution, CDEF, restoration
         let depth = if b.flag()? {
-            if profile == 2 && b.flag()? {
-                12
-            } else {
-                10
-            }
+            if profile == 2 && b.flag()? { 12 } else { 10 }
         } else {
             8
         };
@@ -116,6 +120,7 @@ impl Sequence {
         } else {
             (2, 2, 2)
         };
+        let mut chroma_sample_position = 0;
         let chroma = if mono {
             b.flag()?; // range; monochrome has no separate_uv_delta_q bit
             Chroma::Monochrome
@@ -137,7 +142,8 @@ impl Sequence {
                     _ => (true, false),
                 };
                 if x && y {
-                    if b.read(2)? == 3 {
+                    chroma_sample_position = b.read(2)? as u8;
+                    if chroma_sample_position == 3 {
                         return Err(Error::Invalid);
                     }
                     Chroma::Yuv420
@@ -158,6 +164,10 @@ impl Sequence {
             max_height,
             depth,
             chroma,
+            level_0,
+            tier_0,
+            chroma_sample_position,
+            reduced_still_picture_header: reduced,
         })
     }
 }

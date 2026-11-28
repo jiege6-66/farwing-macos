@@ -6,7 +6,7 @@ use farwing_codec::syntax::av1::{Chroma, Sequence, obu::Units, visible};
 pub(crate) fn leb(data: &[u8], at: &mut usize) -> Result<usize> {
     Ok(farwing_codec::syntax::av1::obu::leb128(data, at)?)
 }
-fn put_leb(mut value: usize, out: &mut Vec<u8>) {
+pub(crate) fn put_leb(mut value: usize, out: &mut Vec<u8>) {
     while value >= 128 {
         out.push(value as u8 | 128);
         value >>= 7;
@@ -38,12 +38,18 @@ pub(crate) fn format(data: &[u8]) -> Option<super::video_format::VideoFormatSign
             sequence = Some(Sequence::parse(unit).ok()?);
         }
     }
-    let s = sequence?;
+    Some(format_from_sequence(sequence?, data))
+}
+
+pub(crate) fn format_from_sequence(
+    s: Sequence,
+    data: &[u8],
+) -> super::video_format::VideoFormatSignature {
     let w = s.max_width;
     let h = s.max_height;
     // AV1 cannot crop; an aligned-only encoder declares its unpadded size.
     let (visible_width, visible_height) = visible::clamp(visible::declared(data).flatten(), (w, h));
-    Some(super::video_format::VideoFormatSignature {
+    super::video_format::VideoFormatSignature {
         coded_width: w,
         coded_height: h,
         visible_width,
@@ -58,7 +64,7 @@ pub(crate) fn format(data: &[u8]) -> Option<super::video_format::VideoFormatSign
         },
         bit_depth_luma: s.depth,
         bit_depth_chroma: s.depth,
-    })
+    }
 }
 
 /// W=0 aggregation keeps sequence/frame headers together when they fit. Every

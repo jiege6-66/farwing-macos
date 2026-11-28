@@ -1,4 +1,4 @@
-//! Sized low-overhead OBUs (AV1 sections 5.3 and 5.4).
+//! Low-overhead OBUs (AV1 sections 5.3 and 5.4).
 use crate::bitstream::{Error, Result};
 
 pub const MAX_TEMPORAL_UNIT_BYTES: usize = 64 * 1024 * 1024;
@@ -32,16 +32,28 @@ pub struct Obu<'a> {
 pub struct Units<'a> {
     remaining: &'a [u8],
     count: usize,
+    allow_unsized_last: bool,
 }
 
 impl<'a> Units<'a> {
     pub fn new(data: &'a [u8]) -> Result<Self> {
+        Self::with_framing(data, false)
+    }
+
+    /// For an externally bounded packet only: an OBU without a size field
+    /// extends to the end of the packet and must therefore be its last OBU.
+    pub fn with_unsized_last(data: &'a [u8]) -> Result<Self> {
+        Self::with_framing(data, true)
+    }
+
+    fn with_framing(data: &'a [u8], allow_unsized_last: bool) -> Result<Self> {
         if data.len() > MAX_TEMPORAL_UNIT_BYTES {
             return Err(Error::Limit);
         }
         Ok(Self {
             remaining: data,
             count: 0,
+            allow_unsized_last,
         })
     }
 }
@@ -59,7 +71,8 @@ impl<'a> Iterator for Units<'a> {
             }
             let bytes = self.remaining;
             let header = bytes[0];
-            if header & 0x83 != 2 {
+            let sized = header & 2 != 0;
+            if header & 0x81 != 0 || !(sized || self.allow_unsized_last) {
                 return Err(Error::Invalid);
             }
             let mut at = 1;
@@ -73,7 +86,11 @@ impl<'a> Iterator for Units<'a> {
             } else {
                 (0, 0)
             };
-            let size = leb128(bytes, &mut at)?;
+            let size = if sized {
+                leb128(bytes, &mut at)?
+            } else {
+                bytes.len() - at
+            };
             let end = at.checked_add(size).ok_or(Error::Limit)?;
             let payload = bytes.get(at..end).ok_or(Error::Truncated)?;
             self.remaining = &bytes[end..];
