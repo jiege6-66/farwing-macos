@@ -14,13 +14,15 @@
 - 本文写作时没有在 Mac 上构建过本项目（开发机尚未安装 Rust）。标【待测】的结论需要真机验证。
 - 用语：被控 = host；主控 = controller = 本文的 Mac 客户端；“Windows 主控”指现有的 Windows 客户端；“平台层”指 `src/platform/<os>`。
 
-上游对其他平台的要求（[djkcyl/farwing#5](https://github.com/djkcyl/farwing/issues/5#issuecomment-6107018029)）：清晰、可维护的后端抽象，让共用业务与平台实现各有明确边界；编解码、画面呈现的效率，输入交互和功能完整性；充分利用各平台的原生能力，功能行为和操作体验与 Windows 版尽量一致。代码约定见 `src/platform/mod.rs:1-2`：产品策略留在 session / features，平台层只做系统实现，不写给未来系统的占位实现。由此本文的做法是：
+上游对其他平台的期望（[djkcyl/farwing#5](https://github.com/djkcyl/farwing/issues/5#issuecomment-6107018029)，原帖讨论的是当时的 Linux 移植；作者表达的是架构与体验上的期望，建议先在 fork 迭代、再把通用改进整理成 PR，并未要求移植先获批准）：清晰、可维护的后端抽象，让共用业务与平台实现各有明确边界；编解码、画面呈现的效率，输入交互和功能完整性；充分利用各平台的原生能力，功能行为和操作体验与 Windows 版尽量一致。代码约定见 `src/platform/mod.rs:1-2`：产品策略留在 session / features，平台层只做系统实现，不写给未来系统的占位实现。由此本文的做法是：
 
 - 没有后端的功能整条不编入，并且**不对外宣告**（不出现在设备注册能力和 HELLO 特性里）；
 - 共用层不出现任何平台类型；
 - 每一步都在 Windows 上回归，Windows 行为不变。
 
 整体背景（含被控与后续阶段的评审意见）见 commit `2dfefe0` 中的 `docs/dev/macos-port.md`。
+
+与上游的协调：2026-11-28 开了 [djkcyl/farwing#34](https://github.com/djkcyl/farwing/issues/34)，问两件事：(1) 只做主控的平台上 `features::host` 的边界放在哪里，是沿用 Linux 主控 [PR #33](https://github.com/djkcyl/farwing/pull/33) 的整块按 Windows 编入，还是先提小 PR 把共享状态与被控运行时分开（§2.2）；(2) 上游 [`macos-viewer`](https://github.com/djkcyl/farwing/tree/macos-viewer) 分支的窗口与呈现实现是否计划迁到 `next`（§4.2、§5.6）。回复前不动 `features::host` 和后台服务分支；不依赖这两件事的工作（M3 无窗口解码、M4 无窗口输入）照常推进。
 
 ---
 
@@ -85,7 +87,7 @@
 |---|---|
 | 调用系统框架 | `objc2` 系列 crate（`objc2-app-kit`、`objc2-metal`、`objc2-video-toolbox`、`objc2-core-media`、`objc2-core-video`、`objc2-io-surface`），不引入 Swift / Objective-C 源文件 |
 | 平台层目录 | `src/platform/macos/`，由 `src/platform/mod.rs` 按 `target_os` 导出与 Windows 同名的模块；平台没有实现的模块不导出 |
-| 被控代码 | 控制面（设置、授权、状态）保留可编译，运行时（采集、编码、注入、驱动、服务）在 Mac 上不编入（§2.2） |
+| 被控代码 | 倾向控制面（设置、授权、状态）保留可编译，运行时（采集、编码、注入、驱动、服务）在 Mac 上不编入（§2.2 做法 B）；最终边界等 #34 回复再定 |
 | 宣告 | 设备注册能力为空集合；HELLO 只声明已实现的特性；`video.recovery` 等 V3（§5.4）通过后再声明 |
 | 权限验收 | 一律用固定 bundle id、Apple 签发证书签名的 `.app` 从 Finder 启动来验收（§8） |
 | 最低系统与架构 | 建议 macOS 14+、仅 arm64【待确认】 |
@@ -151,7 +153,7 @@ M1 已按代码确认 `src/main.rs` 的命令在 Mac 首版的取舍：
 - A. Mac 构建整块不编入 `features::host`。约 100 处 `.host` 引用、登录流程、控制中心的状态栏和连接页都要改成“可能没有被控”，改动面大，而且把“本机是否可被控”的判断散到各处。
 - B. **保留被控的控制面，运行时按平台编入**（采用）。`access`、`settings`、`assist` 的状态、`power` / `wol` 的状态与报文、`parameters`、`format` 等不依赖平台的部分照常编译；`peer`、`input`、`displays`、`audio`、`microphone`、`cameras`、`clipboard` agent 等运行时只在有后端的平台编入。Mac 上被控开关不出现在界面上，presence 不以被控身份登记，设备注册不宣告 `host`。
 
-做法 B 的边界要和上游对齐后再动手（建议先开 issue 讨论 `features::host` 的拆分形状）。后台服务相关的分支在 Mac 上整段不编入（Mac 首版没有后台服务），不写返回 `false` 的替身函数。
+上游的现有参照是 Linux 主控 [PR #33](https://github.com/djkcyl/farwing/pull/33)（2026-11-28 仍为 open，未合并）：它走的是做法 A，`features::host` 整个模块和 `AuthenticatedClient.host` 字段都只在 Windows 编入。PR 未合并，不代表作者已经选定这种做法。本文倾向做法 B，边界选哪种已在 [#34](https://github.com/djkcyl/farwing/issues/34) 问题 1 中提出，回复前不动手。两种做法各能清掉多少 Mac 编译错误，目前都没有验证过。后台服务相关的分支在 Mac 上整段不编入（Mac 首版没有后台服务），不写返回 `false` 的替身函数。
 
 ### 2.3 主控用到的共享类型
 
@@ -237,7 +239,7 @@ M2 已完成（`b356657`）：
 ### 3.4 凭据
 
 - `keyring` 4.1.6 在 `Cargo.lock` 中带有 `apple-native-keyring-store`，Mac 上走 Keychain，服务名沿用 `product::keyring_service`（如 `farwing[.p].session`）。
-- `src/account/auth/secret.rs:20-44` 在 vault 适用时改用 vault；Mac 没有后台服务，这个分支在 Mac 上不编入，直接走 `keyring`。
+- `src/account/auth/secret.rs:20-44` 在 vault 适用时改用 vault。这个 vault 属于 **Windows 客户端本机的后台服务**（`src/account/auth/secret.rs:2` 引用 `platform::windows::host_service::vault`），和自建的 Farwing Server 无关，服务端不需要为 Mac 改动。Mac 没有后台服务，这个分支在 Mac 上不编入，直接走 `keyring`。这一点已在 #34 问题 1 中说明；分支怎么隔开，随 §2.2 后台服务分支的边界一起定。
 - 【待测】首次访问 Keychain 是否弹出授权框，以及签名身份变化后的行为。
 
 ### 3.5 单实例与实例间消息
@@ -468,14 +470,14 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 | 风险 | 说明 | 绕过办法 |
 |---|---|---|
 | Windows 回归 | 共用层改动多，Mac 上验证不到 Windows 行为 | 每一步单独提交；Windows `cargo build --release`、`cargo fast-test --lib` 和对应清单条目通过后再提交 |
-| `features::host` 拆分形状与上游冲突 | 做法 B 改动 `AuthenticatedClient` 与被控模块根 | 动手前在上游讨论；拆分只移动代码、不改行为 |
+| `features::host` 拆分形状与上游冲突 | 做法 B 改动 `AuthenticatedClient` 与被控模块根；Linux 主控 PR #33 选的是做法 A | 已在 #34 提问，回复前不动；拆分只移动代码、不改行为 |
 | VT 对恢复帧的处理 | 不行的话丢包恢复变慢 | 先不声明 `video.recovery`；按 V3 结果再定 |
 | aarch64 上没有 AV1 软件解码 | 硬件不支持 AV1 的 Mac 收不了 AV1 | 如实声明，协商自动避开 |
 | `farwing_h264` 在 aarch64 上只有标量路径 | 软件兜底撑不住高分辨率或高帧率 | 软件 H.264 的声明上限沿用 1920×1080；做基准（V7）后再定是否写 NEON |
 | 渲染后端选择 | 自写后端工作量大，现成后端可能有拷贝 | M8 用数据决定，先跑通 |
 | 本地网络与 TCC | 测试结果失真；用户首次使用门槛高 | §8 的做法；权限检查放在设置页 |
 | Keychain 授权提示 | 签名变化后可能反复弹框 | 开发期固定签名身份 |
-| 与上游 `macos-viewer` 分支重叠 | 上游已有人做 Mac 观看端，底座与做法不同（§5.6）；可能重复劳动，或与上游约定冲突 | 在 issue 中确认分工与“桩还是不编入”后，再推进 M5 及以后 |
+| 与上游 `macos-viewer` 分支重叠 | 上游已有人做 Mac 观看端，底座与做法不同（§5.6）；可能重复劳动，或与上游约定冲突 | #34 问题 2 已问该分支的窗口与呈现是否计划迁到 `next`；回复前先做无窗口的 M3、M4，M5 及以后等回复再推进 |
 | 命令行密码输入时按 Ctrl+C | 默认的 SIGINT 处理不运行 drop guard，终端可能保持不回显 | 已在代码中注明，`stty echo` 可恢复；需要时再处理信号 |
 | 与 Windows 输入行为的差异 | Cmd、CapsLock、触控板滚动的手感 | 默认行为与网页端一致，提供映射选项；双机对照测试 |
 
@@ -515,6 +517,7 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 | 步 | 状态 |
 |---|---|
 | M0 | 包装脚本、测试和开发分支 CI 已配置；本机 Apple Development 签名、严格验签、标识符和证书核对通过。开发机已有 Xcode 命令行工具，Rust 1.95.0 装在仓库外的隔离目录；未实际运行 GitHub workflow，权限判别待验（§8.3）。 |
-| M1 | §1.1–§1.2 构建层、§2.3 共享项迁移及 §1.3 命令取舍已完成。剪贴板、文件传输、拖放、插件、语音与通话、Windows 观看窗口及输入、设备中心和启动器均按平台编入；Mac 不声明 `touch`、`pen`，不请求 HDR。`cargo check` 仍停在 `farwing` 库，M1 结束时本机与 CI 均剩 265 个错误，Windows CI 构建与库测试通过（见 `docs/selftest-results.md`）。§2.1–§2.2 被控运行时拆分待与上游对齐。验收条件“Mac `cargo check` 通过”要等拆分及 M2–M4、M9 中对应的阻断清完。 |
-| M2 | 不依赖被控拆分的部分已完成：§3.3 数据与日志目录、§3.6 系统语言、§3.5 presence 与软件解码槽的 `flock`、§3.1 本机平台与硬件信息、命令行隐藏密码输入（`b356657`–`aa1517d`）。Windows CI 通过，Mac 检查 265 → 237，剩余分类见 `docs/selftest-results.md` 最后一节。§3.2 空能力集合与直连被控能力拆分已完成（`b53daab`；Mac 检查 237 → 236，`--tests` 239 → 237；Windows CI 构建与库测试通过）。待做：§3.4 凭据 vault 分支（与后台服务及上游 issue 的问题 4 相关）、Keychain 实测，以及验收所需的签名 `.app` 内命令行登录（要等库与 bin 能编译）。 |
-| M3–M9 | 未开始 |
+| M1 | §1.1–§1.2 构建层、§2.3 共享项迁移及 §1.3 命令取舍已完成。剪贴板、文件传输、拖放、插件、语音与通话、Windows 观看窗口及输入、设备中心和启动器均按平台编入；Mac 不声明 `touch`、`pen`，不请求 HDR。`cargo check` 仍停在 `farwing` 库，M1 结束时本机与 CI 均剩 265 个错误，Windows CI 构建与库测试通过（见 `docs/selftest-results.md`）。§2.1–§2.2 被控运行时拆分待 [#34](https://github.com/djkcyl/farwing/issues/34) 回复后定。验收条件“Mac `cargo check` 通过”要等拆分及 M2–M4、M9 中对应的阻断清完。 |
+| M2 | 不依赖被控拆分的部分已完成：§3.3 数据与日志目录、§3.6 系统语言、§3.5 presence 与软件解码槽的 `flock`、§3.1 本机平台与硬件信息、命令行隐藏密码输入（`b356657`–`aa1517d`）。Windows CI 通过，Mac 检查 265 → 237，剩余分类见 `docs/selftest-results.md` 最后一节。§3.2 空能力集合与直连被控能力拆分已完成（`b53daab`；Mac 检查 237 → 236，`--tests` 239 → 237；Windows CI 构建与库测试通过）。待做：§3.4 凭据 vault 分支（Windows 本机后台服务的分支，随 #34 问题 1 的边界一起定）、Keychain 实测，以及验收所需的签名 `.app` 内命令行登录（要等库与 bin 能编译）。 |
+| M3 | 进行中。A1–A2 共用解码层改用平台类型（Windows 只加别名），以及 Mac 本机显示探测（主屏物理像素，刷新率取各活动屏最高值）已提交（`64a641f`）。Mac 检查 236 → 235，`--tests` 237 → 236。Windows CI 待跑。下一步做 VideoToolbox 解码器、软件 H.264 路径和硬件能力探测。本轮验收用仓库外 harness 解码真实码流；`dev video` 连 Windows 被控和 V3 要等库能编译。 |
+| M4–M9 | 未开始 |
