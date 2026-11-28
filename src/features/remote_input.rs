@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use crate::i18n::t;
+use crate::platform::input::deadline::Timer;
 use anyhow::{Result, bail};
 use std::time::{Duration, Instant};
 use tokio::sync::Notify;
@@ -306,7 +307,7 @@ struct State {
     transport_recovery: Option<recovery::RecoveryState>,
     throttle: Option<MouseThrottleRate>,
     next_motion_at: Option<Instant>,
-    deadline_timer: Option<crate::platform::windows::input::deadline::Timer>,
+    deadline_timer: Option<Timer>,
     polling_warning: Option<polling::Warning>,
     listeners: Vec<Weak<dyn Fn() + Send + Sync>>,
 }
@@ -334,9 +335,7 @@ impl RemoteInput {
             return Ok(());
         }
         if enabled && s.deadline_timer.is_none() {
-            s.deadline_timer = Some(crate::platform::windows::input::deadline::Timer::new(
-                self.wake.clone(),
-            )?);
+            s.deadline_timer = Some(Timer::new(self.wake.clone())?);
         }
         if let Some(timer) = &mut s.deadline_timer {
             timer.disarm();
@@ -1164,7 +1163,7 @@ impl RemoteInput {
                     });
                 }
             }
-            // Physical input, cancellation and the one-shot native timer all
+            // Physical input, cancellation and the one-shot deadline timer all
             // use the same wakeup. No periodic work while the queue is empty.
             wake.await;
         }
