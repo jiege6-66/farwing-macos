@@ -103,29 +103,13 @@ fn prompt(label: &str) -> Result<String> {
     Ok(line.trim().to_owned())
 }
 
-/// Read a line without echo on a Windows console; falls back to a plain read
-/// when standard input is redirected.
+/// Prompt for a password, hiding input when stdin is a terminal.
 fn read_hidden(label: &str) -> Result<String> {
     use std::io::Write as _;
-    use windows::Win32::System::Console::{
-        CONSOLE_MODE, ENABLE_ECHO_INPUT, GetConsoleMode, GetStdHandle, STD_INPUT_HANDLE,
-        SetConsoleMode,
-    };
     print!("{label}");
     std::io::stdout().flush()?;
-    let handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) }.context("无法访问控制台输入")?;
-    let mut mode = CONSOLE_MODE::default();
-    let console = unsafe { GetConsoleMode(handle, &mut mode) }.is_ok();
-    if console {
-        let _ = unsafe { SetConsoleMode(handle, mode & !ENABLE_ECHO_INPUT) };
-    }
     let mut line = String::new();
-    let result = std::io::stdin().read_line(&mut line);
-    if console {
-        let _ = unsafe { SetConsoleMode(handle, mode) };
-        println!();
-    }
-    result.context("读取密码失败")?;
+    crate::platform::console::read_hidden_line(&mut line)?;
     Ok(line.trim_end_matches(['\r', '\n']).to_owned())
 }
 

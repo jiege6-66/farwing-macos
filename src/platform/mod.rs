@@ -3,13 +3,13 @@
 #[cfg(target_os = "macos")]
 pub(crate) mod macos;
 #[cfg(target_os = "macos")]
-pub(crate) use macos::{device_profile, locks};
+pub(crate) use macos::{console, device_profile, locks};
 #[cfg(windows)]
 pub(crate) mod windows;
 #[cfg(windows)]
 pub(crate) use windows::{
-    camera, capture, decoder, device_profile, display, display_hdr, encoder, graphics, locks,
-    source, surface, swapchain, transfer, video_shader,
+    camera, capture, console, decoder, device_profile, display, display_hdr, encoder, graphics,
+    locks, source, surface, swapchain, transfer, video_shader,
 };
 
 /// This installation's platform for registration and direct connections.

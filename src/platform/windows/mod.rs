@@ -5,6 +5,7 @@ pub(crate) mod annotation;
 pub(crate) mod capture;
 pub(crate) mod capture_service;
 pub(crate) mod components;
+pub(crate) mod console;
 pub(crate) mod cursor;
 pub(crate) mod cursor_shape;
 pub(crate) mod decoder;
