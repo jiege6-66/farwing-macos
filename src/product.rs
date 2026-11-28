@@ -172,52 +172,40 @@ pub fn shortcut_file_name() -> String {
     format!("{}.lnk", display_name())
 }
 
-/// `%LOCALAPPDATA%`, validated as an absolute directory.
+/// The user's application data directory, validated as an absolute path.
 pub fn local_app_data() -> Result<PathBuf> {
-    if let Some(path) = std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .filter(|path| path.is_absolute())
-    {
-        return Ok(path);
-    }
-    known_folder(&windows::Win32::UI::Shell::FOLDERID_LocalAppData)
-        .context(crate::i18n::t().system.local_app_data_unknown)
+    #[cfg(windows)]
+    return crate::platform::windows::folders::local_app_data();
+    #[cfg(target_os = "macos")]
+    return crate::platform::macos::folders::application_support();
 }
 
-/// Per-user data root: `%LOCALAPPDATA%\Farwing` for the default profile and
-/// `%LOCALAPPDATA%\Farwing\profiles\<profile>` otherwise.
+/// Per-user data root: `Farwing` for the default profile and
+/// `Farwing/profiles/<profile>` otherwise, under the user's application data.
 pub fn local_data_dir() -> Result<PathBuf> {
-    let base = local_app_data()?.join(PRODUCT_NAME);
-    Ok(if is_default_profile() {
+    Ok(profile_dir(local_app_data()?))
+}
+
+/// Per-user log root under `~/Library/Logs`, with the same profile layout.
+#[cfg(target_os = "macos")]
+pub(crate) fn log_dir() -> Result<PathBuf> {
+    Ok(profile_dir(crate::platform::macos::folders::logs()?))
+}
+
+fn profile_dir(root: PathBuf) -> PathBuf {
+    let base = root.join(PRODUCT_NAME);
+    if is_default_profile() {
         base
     } else {
         base.join("profiles").join(profile())
-    })
+    }
 }
 
 /// Machine scope `%ProgramData%\Farwing`. Owned by the machine-wide service,
 /// so it is only meaningful for the default profile.
+#[cfg(windows)]
 pub fn program_data_dir() -> Result<PathBuf> {
-    Ok(known_folder(&windows::Win32::UI::Shell::FOLDERID_ProgramData)
-        .context(crate::i18n::t().system.program_data_unknown)?
-        .join(PRODUCT_NAME))
-}
-
-fn known_folder(id: &windows::core::GUID) -> Result<PathBuf> {
-    use windows::Win32::{
-        System::Com::CoTaskMemFree,
-        UI::Shell::{KF_FLAG_DEFAULT, SHGetKnownFolderPath},
-    };
-    let raw = unsafe { SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, None)? };
-    let text = unsafe { raw.to_string() };
-    unsafe { CoTaskMemFree(Some(raw.0.cast())) };
-    let path = PathBuf::from(text?);
-    ensure!(
-        path.is_absolute(),
-        "{}",
-        (crate::i18n::t().system.system_folder_invalid)(&path.display().to_string())
-    );
-    Ok(path)
+    Ok(crate::platform::windows::folders::program_data()?.join(PRODUCT_NAME))
 }
 
 /// Profile-specific object name: `Farwing.<suffix>` (default profile) or

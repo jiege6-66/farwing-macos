@@ -697,6 +697,8 @@ pub(crate) struct System {
     pub service_user_not_allowed: &'static str,
     pub local_app_data_unknown: &'static str,
     pub program_data_unknown: &'static str,
+    #[cfg(target_os = "macos")]
+    pub application_support_unknown: &'static str,
     pub system_folder_invalid: fn(&str) -> String,
     pub settings_file_invalid: fn(&str) -> String,
     pub settings_folder_invalid: &'static str,
@@ -1339,6 +1341,8 @@ pub(crate) const ZH_CN: System = System {
     service_user_not_allowed: "该 Windows 用户无权管理被控服务",
     local_app_data_unknown: "无法确定 LOCALAPPDATA 目录",
     program_data_unknown: "无法确定 ProgramData 目录",
+    #[cfg(target_os = "macos")]
+    application_support_unknown: "无法确定应用程序支持目录（Application Support）",
     system_folder_invalid: |path| format!("系统目录无效：{path}"),
     settings_file_invalid: |path| format!("设置文件已损坏：{path}"),
     settings_folder_invalid: "设置目录无效",
@@ -1981,6 +1985,8 @@ pub(crate) const EN: System = System {
     service_user_not_allowed: "This Windows user can't manage the remote access service",
     local_app_data_unknown: "Can't find the LOCALAPPDATA folder",
     program_data_unknown: "Can't find the ProgramData folder",
+    #[cfg(target_os = "macos")]
+    application_support_unknown: "Can't find the Application Support folder",
     system_folder_invalid: |path| format!("Invalid system folder: {path}"),
     settings_file_invalid: |path| format!("Settings file is damaged: {path}"),
     settings_folder_invalid: "Invalid settings folder",
