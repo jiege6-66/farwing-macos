@@ -11,6 +11,9 @@ plain names shown here.
 | Component staging | `%ProgramFiles%\FarwingComponents\package-*` |
 | Machine data / service vault | `%ProgramData%\Farwing\host` |
 | User data | `%LOCALAPPDATA%\Farwing` (profile `p`: `%LOCALAPPDATA%\Farwing\profiles\p`) |
+| macOS user data | `~/Library/Application Support/Farwing` (profile `p`: `.../Farwing/profiles/p`) |
+| macOS logs | `~/Library/Logs/Farwing` (profile `p`: `.../Farwing/profiles/p`); on Windows logs stay in `<user data>\logs` |
+| macOS cross-process locks | `<user data>/locks/presence.<client id>.lock`, `<user data>/locks/software-video-playback.v1.lock` (`flock`) |
 | Runtime cache (launcher) | `%LOCALAPPDATA%\Farwing\runtime` |
 | Credential services | `farwing[.p].session`, `farwing[.p].assist.<sha>`, `farwing[.p].wallpaper`, `farwing[.p].host.*`, `farwing[.p].viewing.*`, … |
 | Kernel objects / pipes | `Local\Farwing[.p].*`, `Global\Farwing[.p].*`, `\\.\pipe\Farwing[.p].*` |

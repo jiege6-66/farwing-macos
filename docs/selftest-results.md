@@ -1994,3 +1994,45 @@ logs=/Volumes/OUTSIDE/dev-tools/farwing/tmp
 `docs/manual-test-checklist.md` 的条目没有做；Windows 只回归了构建与库测试，没有界面或运行时行为变更。macOS 还未检查到 bin，`src/main.rs` 仅静态核对；本轮三项新增测试（`peer.rs`、`settings.rs`）也要等库能编译后才能在 macOS 运行。
 
 库通过检查后，仅由 Windows 专属代码使用的共用项会报 `dead_code`，如 `src/session/controller/viewing.rs:216` 的 `run_viewer_connection_owner`、`:696` 的 `present_video`，`src/session/controller/direct.rs:84` 的 `run_owner`，以及 `src/application/viewer/hud.rs:8` 的 `show_performance_overlay`、`stream_menu`、`src/ui/branding.rs` 的 `Art` / `paint` / `icon` / `source`、`src/ui/controls.rs:571` 的 `viewer_caption_separator` 和文字聊天服务与渲染。留到 M1 收尾，或由 M5–M6 的调用方接回。§2.2 的被控拆分仍待与上游讨论。
+
+## macOS 主控：M2 数据目录、语言、跨进程锁、平台身份与密码输入之后的检查（2026-11-28）
+
+**结果：Windows 回归通过；本机与 CI 的 macOS 检查均剩 237 个错误，比上一节少 28 个。** 测试提交 `aa1517d`，对照 `ec11a93`。这是第一批真实的 macOS 后端（`src/platform/macos/`），对应的 Windows 实现原样搬到 `src/platform/windows/`。共五步：
+
+- `b356657`（§3.3）：数据目录 `~/Library/Application Support/Farwing`、日志目录 `~/Library/Logs/Farwing`，经 `NSFileManager` 取得，profile 规则共用。`.state`、设置文件替换、打开日志目录各有 Mac 实现；`program_data_dir` 只在 Windows 编入。新增 Mac 依赖 `objc2 0.6.4`、`objc2-foundation 0.3.2`，均为 `Cargo.lock` 中已有版本。
+- `ec1d60f`（§3.6）：系统语言取 `NSLocale.preferredLanguages` 第一项，主语言子标签为 `zh` 时用简体中文，其余用英文。
+- `011cc82`（§3.5）：presence 与软件解码槽在 Mac 上用 `flock`（std `File::try_lock`），锁文件在数据目录的 `locks/` 下；presence key 先按 UUID 校验。`WideName`、`wide` 与 `PCWSTR` 只在 Windows 编入。
+- `510b028`（§3.1）：本机平台 `platform::PLATFORM` 用于设备注册、直连握手与主控直连记录；`Hardware` 移到 `src/account/hardware.rs`；Mac 读取计算机名、机型、芯片、内存、系统版本、主屏像素、主网卡 MAC 与主机 UUID。新增 `libc`、`objc2-core-foundation`、`objc2-core-graphics`、`system-configuration-sys`，均为已有版本。
+- `aa1517d`：命令行登录在 Mac 终端上用 termios 隐藏密码，非终端或 `tcgetattr` 失败时明文读取。
+
+本机为 Apple Silicon、macOS 15.6、SDK 15.5。在工作树根目录用隔离 wrapper 执行：
+
+```sh
+run=/Volumes/OUTSIDE/dev-tools/farwing/run
+logs=/Volumes/OUTSIDE/dev-tools/farwing/tmp
+"$run" cargo +1.95.0 check --locked --target aarch64-apple-darwin --message-format short >"$logs/m2-final.log" 2>&1
+```
+
+| 检查 | 结果 |
+|---|---|
+| 本机 `cargo check --locked --target aarch64-apple-darwin`（Rust 1.95.0） | 265 → 249 → 248 → 242 → 238 → 237 个错误，每步无新增报错位置；仍只有 1 个既有 warning（`src/features/host/mod.rs:31`） |
+| fork CI `windows-check.yml`（`windows-2025`，[46103354807](https://github.com/jiege6-66/farwing-macos/actions/runs/46103354807)） | `cargo build --release --locked` 成功（16 分 16 秒），构建无 warning；`cargo fast-test --locked --lib`（编译 13 分 19 秒）289 项中 287 项通过、0 项失败、2 项 ignored。新增的 `i18n::tests::system_language_follows_preferred_tag` 通过 |
+| fork CI `macos-check.yml`（`macos-15` arm64，[46103354811](https://github.com/jiege6-66/farwing-macos/actions/runs/46103354811)） | 按预期失败，237 个错误、1 个 warning，234 个报错主位置与本机完全一致 |
+| 硬件信息（本机单独运行 Mac 读取代码，不经库） | 计算机名、`Mac16,12`、Apple M4、16384 MiB、`macOS 15.6 (24G84)`、`2940x1912`，读到主机 UUID；默认路由为 VPN 的 `utun` 时 MAC 退回 `en0`；`errors` 为空 |
+| 隐藏密码输入（本机伪终端与管道单独测试） | 回显关闭与恢复、CR/LF 去除、非法 UTF-8 出错后恢复终端、`tcgetattr` 失败时明文读取均符合预期 |
+
+Mac 上新增的三项测试（`platform::macos::locks` 的两项、`platform::macos::device_profile::tests::link_mac_follows_the_interface_name`）`cargo check --tests` 无报错，要等库能编译后才能运行。
+
+剩余错误按归属分类，每条只计一次：
+
+| 归属 | 阻断 | 条数 | 代表位置 |
+|---|---|---:|---|
+| §2.1–§2.2 | 被控运行时（`features::host` 除 `wol.rs`，以及 `transport/signal/host.rs:913`） | 150 | `src/features/host/mod.rs:130` |
+| §2.2、§3.4 | 共用文件里的后台服务分支（resident、vault、components）与壁纸发布 | 39 | `src/session/presence.rs:75`、`src/session/device_session.rs:179`、`src/account/auth/mod.rs:517`、`src/account/auth/secret.rs:2`、`src/account/client/publication.rs:5` |
+| M9 | 本地与远程诊断包 | 13 | `src/diagnostics/bundle.rs:149`、`src/diagnostics/remote/host.rs:48` |
+| §4.2、§5.2–§5.4（M3） | 本机显示探测、解码后端、GPU 句柄、适配器选择 | 19 | `src/media/mod.rs:26`、`src/media/decoder/diagnostics.rs`、`src/media/selection.rs` |
+| §6.2（M4） | HID 判断、脚本输入和按键计时 | 4 | `src/features/remote_input.rs`、`src/application/dev_input.rs:9` |
+| §8.2（M9） | 局域网地址、路由、网络变化、WOL | 11 | `src/transport/signal/mod.rs:820`、`src/transport/nat/route.rs`、`src/transport/direct/lan.rs`、`src/features/host/wol.rs:4` |
+| §3.2 | 主控 HELLO 能力判断 | 1 | `src/protocol/peer.rs:282` |
+
+`docs/manual-test-checklist.md` 的条目没有做：Windows 只有代码搬移，没有界面或运行时行为变更；Mac 的命令行登录要等库与 bin 能编译。审查中发现的遗留见简报 §3.3（诊断包的日志路径假设、共用路径里写死 `LOCALAPPDATA` 的文案）和 §9（Ctrl+C 后终端可能不回显）。

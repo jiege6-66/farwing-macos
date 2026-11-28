@@ -10,7 +10,7 @@
 
 不在本文：Mac 被控、无人值守、虚拟屏与驱动、剪贴板、文件传输、拖放、聊天语音与通话、批注、插件、HDR、自动更新。它们在 §0.2 列为后续项，届时另写简报。
 
-- 基线的 `文件:行` 对应 2026-11-27 的代码快照（`next@735d69e`）；本轮 M1 更新的引用对应 `bf70694`。代码与 `docs/**/*.md` 不一致时以代码为准，差异见 §10。
+- 基线的 `文件:行` 对应 2026-11-27 的代码快照（`next@735d69e`）；M1 更新的引用对应 `bf70694`，M2 更新的引用对应 `aa1517d`。代码与 `docs/**/*.md` 不一致时以代码为准，差异见 §10。
 - 本文写作时没有在 Mac 上构建过本项目（开发机尚未安装 Rust）。标【待测】的结论需要真机验证。
 - 用语：被控 = host；主控 = controller = 本文的 Mac 客户端；“Windows 主控”指现有的 Windows 客户端；“平台层”指 `src/platform/<os>`。
 
@@ -183,7 +183,22 @@ M1 已将下列主控也用到的类型、常量和函数放在共用层；尚�
 
 被控一侧的 `lan.rs:49`、`host.rs:420`、`host.rs:600` 和服务端 `server/src/records.rs:231` 留给 Mac 被控（`2dfefe0` 的 R2），首版 Mac 不运行这些路径。
 
-`device_init_request` 的硬件信息来自 `platform::windows::device_profile::Hardware`（`src/account/auth/mod.rs:281`、`src/account/reporting.rs:2`、`src/account/client/publication.rs:5`），改为平台层的硬件信息接口。Mac 上：机型与芯片（`sysctl hw.model`、`machdep.cpu.brand_string`）、内存（`hw.memsize`）、系统版本（`NSProcessInfo.operatingSystemVersion`）、主屏分辨率、主网卡 MAC。计算机名来自 `device_profile::computer_name`（`src/transport/direct/mod.rs:72`），Mac 上用 `SCDynamicStoreCopyComputerName` 或 `NSHost`【待测】。
+`device_init_request` 的硬件信息来自 `platform::windows::device_profile::Hardware`（`src/account/auth/mod.rs:281`、`src/account/reporting.rs:2`、`src/account/client/publication.rs:5`），改为平台层的硬件信息接口。Mac 上：机型与芯片（`sysctl hw.model`、`machdep.cpu.brand_string`）、内存（`hw.memsize`）、系统版本（`NSProcessInfo.operatingSystemVersion`）、主屏分辨率、主网卡 MAC。计算机名来自 `device_profile::computer_name`（`src/transport/direct/mod.rs:72`），Mac 上用 `SCDynamicStoreCopyComputerName` 或 `NSHost`。
+
+M2 已完成（`510b028`）：
+
+- 本机平台为 `platform::PLATFORM`（`src/platform/mod.rs:16-19`），上面三处主控路径改用它。
+- `Hardware` 数据类型移到共用的 `src/account/hardware.rs`，字段与 serde 形状不变；各平台的 `device_profile` 提供 `Hardware::read()` 与 `computer_name()`。
+- Mac 的读取在 `src/platform/macos/device_profile.rs`：
+  - 计算机名用 `SCDynamicStoreCopyComputerName`；
+  - `base_board` 为 `hw.model`，`cpu` 为 `machdep.cpu.brand_string`；
+  - `os` 形如 `macOS 15.6 (24G84)`；
+  - `screen` 为主屏原生像素（Retina 下与 Windows 的 `SM_CXSCREEN` 逻辑尺寸口径不同）；
+  - `mac` 取 SCDynamicStore 主接口的 MAC，主接口没有链路层地址（如 VPN 的 `utun`）时退回 `en0`；
+  - `system_uuid` 用 `gethostuuid`，取不到时记入 `errors`、不阻止注册；
+  - `machine_guid`（Windows 注册表概念）与 `video` 留空。
+- 本机实测：Mac16,12、Apple M4、16384 MiB、`2940x1912`，`errors` 为空。
+- 设备注册的空能力集合（§3.2）、壁纸发布（`publication.rs` 的 wallpaper 与 resident 分支）以及局域网地址（§8.2）未做。
 
 ### 3.2 能力与特性
 
@@ -198,6 +213,18 @@ M1 已将下列主控也用到的类型、常量和函数放在共用层；尚�
 - 日志：`src/diagnostics/logging/files.rs:20` 要求 `LOCALAPPDATA`，Mac 上用 `~/Library/Logs/Farwing`。诊断包（`src/diagnostics/bundle.rs`）的系统信息部分按平台。
 - `product.rs` 里的 `EXECUTABLE_NAME`、pipe 和内核对象名、`PCWSTR` 包装属于 Windows 平台层；产品名、profile、`keyring_service` 等保持共用。
 
+M2 已完成（`b356657`）：
+
+- `src/platform/macos/folders.rs` 经 `NSFileManager` 取 Application Support 与 Library 目录。
+- 数据目录与日志目录共用 `product::profile_dir` 的 profile 规则。日志在 Mac 上与数据目录分开；Windows 仍为数据目录下的 `logs`。
+- `.state` 目录在 Mac 上靠点前缀隐藏；设置文件先 `sync_all` 再 `rename` 替换；打开日志目录用 `/usr/bin/open`。
+- `program_data_dir` 只在 Windows 编入。`WideName`、`wide` 与 `PCWSTR` 导入在 M2 §3.5 之后只在 Windows 编入（`011cc82`）。
+
+遗留：
+
+- `src/diagnostics/bundle.rs:236-247` 仍按 `local_data_dir()/logs` 找日志，`:501-509` 从日志路径的上一级推导导出目录；移植诊断包时要改。
+- 共用路径里仍有写死 `LOCALAPPDATA` 的 context 文案，如 `src/account/auth/mod.rs:521`、`src/transport/direct/store.rs:30`、`src/media/preferences.rs:6`。
+
 ### 3.4 凭据
 
 - `keyring` 4.1.6 在 `Cargo.lock` 中带有 `apple-native-keyring-store`，Mac 上走 Keychain，服务名沿用 `product::keyring_service`（如 `farwing[.p].session`）。
@@ -210,9 +237,16 @@ M1 已将下列主控也用到的类型、常量和函数放在共用层；尚�
 - `src/session/presence.rs:143-154` 的 named mutex 同样改为 `flock`。
 - `src/media/decoder/software_slot.rs` 的约定是同一登录会话、同一 profile 的**所有进程**共用一个软件解码槽（`:1-2`），Mac 上用 profile 目录下的锁文件 `flock` 实现，保持跨进程排他。
 
+M2 已完成 presence 与软件解码槽（`011cc82`）：
+
+- 进程内占用标记、线程绑定、重试与取消留在共用层；平台层只提供“试占用”。Windows 的 named mutex 原样移到 `src/platform/windows/locks.rs`。
+- Mac 用 std `File::try_lock`（即 `flock(LOCK_EX | LOCK_NB)`），锁文件为数据目录下的 `locks/software-video-playback.v1.lock` 和 `locks/presence.<client_id>.lock`。锁文件不删除，进程退出由内核释放。
+- presence key 先按 UUID 解析再拼进路径。Mac 的 client id 存在该用户、该 profile 的 Keychain 条目中，所以按用户隔离的锁与 Windows `Global\` 的效果相同。
+- 单实例（`instance.rs`）仍在 M5。
+
 ### 3.6 系统语言与字体
 
-- `src/i18n/mod.rs:113` 调用 `GetUserDefaultUILanguage`；Mac 上取 `NSLocale.preferredLanguages` 的第一项。`src/i18n/system.rs` 中只属于 Windows 被控的文案在 Mac 构建里不使用，首版不拆分该文件，只保证不引用。
+- `src/i18n/mod.rs:113` 调用 `GetUserDefaultUILanguage`；Mac 上取 `NSLocale.preferredLanguages` 的第一项。M2 已完成（`ec1d60f`）：主语言子标签为 `zh` 的都按简体中文，其余（含取不到）按英文，与 Windows 对所有中文 LANGID 的处理一致；映射函数 `language_for_system_tag` 有单元测试。`src/i18n/system.rs` 中只属于 Windows 被控的文案在 Mac 构建里不使用，首版不拆分该文件，只保证不引用。
 - `src/ui/fonts.rs:67-71` 从 `%WINDIR%\Fonts` 读 `msyh.ttc` 等；Mac 上读 `/System/Library/Fonts/PingFang.ttc`（或经 CoreText 按名称查找）【待测：egui 对 `.ttc` 中所需字形的加载】。
 
 ## 4. 窗口与界面
@@ -234,6 +268,7 @@ M5 前，设备中心界面与窗口宿主（`application::app`、`ui::run` 等�
 - 托盘：`NSStatusItem` + `NSMenu`，菜单项与 `ui/tray.rs` 一致；`TrayState`、`full_exit` 的语义不变。
 - 文件对话框：`NSOpenPanel` / `NSSavePanel`（可用 `rfd`，它直接调用这两个 API），替代 `platform/windows/file_dialog.rs`。首版只在导出诊断等少数地方用到。
 - 不编入的界面：§0.2 中“本机作为被控的界面”和“安装、更新、卸载”。
+- 首次显示：现在窗口先隐藏，首帧呈现后再显示（`src/ui/windows.rs:133`、`:210`、`:379`）。`CAMetalLayer` 不给不可见的窗口 drawable，首帧永远等不到，所以 Mac 上窗口要在创建时可见，观看窗口同理。上游 `macos-viewer` 分支的 `bbeaa01`、`b9e6012` 遇到并处理了这个问题。
 
 ## 5. 视频：接收、解码、呈现
 
@@ -292,6 +327,8 @@ transport/rtc/receive.rs → transport/video_receiver/*
 1. 现成 egui 后端 + 独立的原生视频层；
 2. 自写 egui Metal 后端（参照 `vendor/egui-directx11`）+ 同一视频层；
 3. 视频层分别用直接 Metal 和 `AVSampleBufferDisplayLayer` 作对照。
+
+上游 `macos-viewer` 分支（建在 OpenUUYC 与 Linux 移植之上，不是 `next`）的 `src/platform/macos/graphics.rs`、`video_layer.rs` 是候选 1 的一个已跑通样本：egui-wgpu 跑在 Metal 上，每个窗口一个 surface；视频层支持 NV12 / RGBA、letterbox 和 90° 旋转，但走 CPU 上传。借鉴时在 commit 中注明出处。
 
 场景：独立播放、叠加菜单与 HUD、多窗口打开关闭、全屏切换。记录显示延迟、`render_interval_p95_ms`、丢帧、CPU 是否回读像素。现成后端能否零拷贝导入 IOSurface（例如经 wgpu 的 hal 层）【待测】。
 
@@ -429,6 +466,8 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 | 渲染后端选择 | 自写后端工作量大，现成后端可能有拷贝 | M8 用数据决定，先跑通 |
 | 本地网络与 TCC | 测试结果失真；用户首次使用门槛高 | §8 的做法；权限检查放在设置页 |
 | Keychain 授权提示 | 签名变化后可能反复弹框 | 开发期固定签名身份 |
+| 与上游 `macos-viewer` 分支重叠 | 上游已有人做 Mac 观看端，底座与做法不同（§5.6）；可能重复劳动，或与上游约定冲突 | 在 issue 中确认分工与“桩还是不编入”后，再推进 M5 及以后 |
+| 命令行密码输入时按 Ctrl+C | 默认的 SIGINT 处理不运行 drop guard，终端可能保持不回显 | 已在代码中注明，`stty echo` 可恢复；需要时再处理信号 |
 | 与 Windows 输入行为的差异 | Cmd、CapsLock、触控板滚动的手感 | 默认行为与网页端一致，提供映射选项；双机对照测试 |
 
 ## 10. 文档与代码的出入（以代码为准）
@@ -439,7 +478,7 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 | `docs/protocol/peer-messages.md:78`：映射表在 `src/platform/windows/input/keyboard.rs` | §6.2 之后，usage 判断在共用层，Windows 扫描码表仍在该文件；同步修改此句 |
 | `docs/protocol/web-control-brief.md`、`rfi-ltr-brief.md`：“原生”指 Windows 客户端主控 | 实现后“原生主控”包括 Mac；相关结论按平台复核 |
 | `build.rs:4-5` 的断言信息：“other platform backends were removed” | 指 v0.3.0（`572014b`）删除的 Linux / Apple 解码器；本工作重新引入 macOS 后端 |
-| `docs/dev/identity.md` | M0 已登记 macOS bundle id；数据目录、Keychain 服务名、socket 与锁文件路径随实现补齐 |
+| `docs/dev/identity.md` | M0 已登记 macOS bundle id；M2 补了数据、日志目录与锁文件；Keychain 服务名实测与 socket 路径随 M2 凭据、M5 单实例补齐 |
 
 ## 11. 实现清单（按顺序）
 
@@ -467,5 +506,6 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 | 步 | 状态 |
 |---|---|
 | M0 | 包装脚本、测试和开发分支 CI 已配置；本机 Apple Development 签名、严格验签、标识符和证书核对通过。开发机已有 Xcode 命令行工具，Rust 1.95.0 装在仓库外的隔离目录；未实际运行 GitHub workflow，权限判别待验（§8.3）。 |
-| M1 | §1.1–§1.2 构建层、§2.3 共享项迁移及 §1.3 命令取舍已完成。剪贴板、文件传输、拖放、插件、语音与通话、Windows 观看窗口及输入、设备中心和启动器均按平台编入；Mac 不声明 `touch`、`pen`，不请求 HDR。`cargo check` 仍停在 `farwing` 库，本机与 CI 均剩 265 个错误；本轮 Windows CI 构建与库测试通过（见 `docs/selftest-results.md`）。§2.1–§2.2 被控运行时拆分待与上游对齐，`src/platform/macos/` 尚未建立；其余阻断分属 M2 身份与存储、M3 解码与显示探测、M4 输入、M5 单实例与语言，以及 M9 网络等。 |
-| M2–M9 | 未开始 |
+| M1 | §1.1–§1.2 构建层、§2.3 共享项迁移及 §1.3 命令取舍已完成。剪贴板、文件传输、拖放、插件、语音与通话、Windows 观看窗口及输入、设备中心和启动器均按平台编入；Mac 不声明 `touch`、`pen`，不请求 HDR。`cargo check` 仍停在 `farwing` 库，M1 结束时本机与 CI 均剩 265 个错误，Windows CI 构建与库测试通过（见 `docs/selftest-results.md`）。§2.1–§2.2 被控运行时拆分待与上游对齐。验收条件“Mac `cargo check` 通过”要等拆分及 M2–M4、M9 中对应的阻断清完。 |
+| M2 | 不依赖被控拆分的部分已完成：§3.3 数据与日志目录、§3.6 系统语言、§3.5 presence 与软件解码槽的 `flock`、§3.1 本机平台与硬件信息、命令行隐藏密码输入（`b356657`–`aa1517d`）。Windows CI 通过，Mac 检查 265 → 237，剩余分类见 `docs/selftest-results.md` 最后一节。待做：§3.2 空能力集合、§3.4 凭据 vault 分支（与后台服务及上游 issue 的问题 4 相关）、Keychain 实测，以及验收所需的签名 `.app` 内命令行登录（要等库与 bin 能编译）。 |
+| M3–M9 | 未开始 |
