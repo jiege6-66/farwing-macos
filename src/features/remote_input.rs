@@ -1075,6 +1075,13 @@ impl RemoteInput {
         self.wake.notify_one();
     }
 
+    /// Wait for the next item for the input sender.
+    ///
+    /// On macOS, poll this on a Tokio runtime with its time driver enabled
+    /// and running. Outside a Tokio runtime context, arming a new deadline
+    /// returns an error: this logs it, releases input and switches to view-only.
+    /// With time disabled, arming succeeds but the timer task panics without
+    /// waking the sender.
     pub async fn next(&self) -> InputWork {
         loop {
             let wake = self.wake.notified();

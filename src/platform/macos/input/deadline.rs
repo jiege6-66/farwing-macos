@@ -59,6 +59,9 @@ impl Timer {
         }) {
             return Ok(());
         }
+        // A new arm outside a Tokio runtime context returns Err. With time
+        // disabled, arm returns Ok but sleep_until panics in the task before
+        // it can wake the sender.
         let runtime = Handle::try_current()?;
         self.disarm();
         let wake = self.wake.clone();
@@ -129,7 +132,9 @@ mod tests {
         let mut timer = Timer::new(wake.clone()).unwrap();
         let deadline = Instant::now() + Duration::from_millis(20);
         timer.arm(deadline).unwrap();
+        let task_id = timer.armed.as_ref().unwrap().task.id();
         timer.arm(deadline).unwrap();
+        assert_eq!(timer.armed.as_ref().unwrap().task.id(), task_id);
         timeout(Duration::from_secs(1), wake.notified())
             .await
             .unwrap();

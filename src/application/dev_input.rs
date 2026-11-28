@@ -623,27 +623,144 @@ mod tests {
     use super::*;
 
     #[test]
-    fn text_maps_to_us_positions() {
-        assert_eq!(char_keys('a').unwrap(), (None, K | 0x04));
-        assert_eq!(char_keys('A').unwrap(), (Some(K | 0xe1), K | 0x04));
-        assert_eq!(char_keys('z').unwrap(), (None, K | 0x1d));
-        assert_eq!(char_keys('1').unwrap(), (None, K | 0x1e));
-        assert_eq!(char_keys('0').unwrap(), (None, K | 0x27));
-        assert_eq!(char_keys('!').unwrap(), (Some(K | 0xe1), K | 0x1e));
-        assert_eq!(char_keys(')').unwrap(), (Some(K | 0xe1), K | 0x27));
-        assert_eq!(char_keys('\n').unwrap(), (None, K | 0x28));
-        assert_eq!(char_keys('\t').unwrap(), (None, K | 0x2b));
-        assert_eq!(char_keys(' ').unwrap(), (None, K | 0x2c));
-        assert_eq!(char_keys(';').unwrap(), (None, K | 0x33));
-        assert_eq!(char_keys(':').unwrap(), (Some(K | 0xe1), K | 0x33));
-        assert_eq!(char_keys('?').unwrap(), (Some(K | 0xe1), K | 0x38));
-        assert_eq!(char_keys('"').unwrap(), (Some(K | 0xe1), K | 0x34));
-        assert_eq!(char_keys('~').unwrap(), (Some(K | 0xe1), K | 0x35));
-        assert_eq!(char_keys('|').unwrap(), (Some(K | 0xe1), K | 0x31));
+    fn text_matches_legacy_windows_usages() {
+        // All 97 characters from the pre-M4 Windows set-1 path, grouped by
+        // usage: unshifted character, then its optional shifted counterpart.
+        let cases = [
+            (0x07_0004, 'a', Some('A')),
+            (0x07_0005, 'b', Some('B')),
+            (0x07_0006, 'c', Some('C')),
+            (0x07_0007, 'd', Some('D')),
+            (0x07_0008, 'e', Some('E')),
+            (0x07_0009, 'f', Some('F')),
+            (0x07_000a, 'g', Some('G')),
+            (0x07_000b, 'h', Some('H')),
+            (0x07_000c, 'i', Some('I')),
+            (0x07_000d, 'j', Some('J')),
+            (0x07_000e, 'k', Some('K')),
+            (0x07_000f, 'l', Some('L')),
+            (0x07_0010, 'm', Some('M')),
+            (0x07_0011, 'n', Some('N')),
+            (0x07_0012, 'o', Some('O')),
+            (0x07_0013, 'p', Some('P')),
+            (0x07_0014, 'q', Some('Q')),
+            (0x07_0015, 'r', Some('R')),
+            (0x07_0016, 's', Some('S')),
+            (0x07_0017, 't', Some('T')),
+            (0x07_0018, 'u', Some('U')),
+            (0x07_0019, 'v', Some('V')),
+            (0x07_001a, 'w', Some('W')),
+            (0x07_001b, 'x', Some('X')),
+            (0x07_001c, 'y', Some('Y')),
+            (0x07_001d, 'z', Some('Z')),
+            (0x07_001e, '1', Some('!')),
+            (0x07_001f, '2', Some('@')),
+            (0x07_0020, '3', Some('#')),
+            (0x07_0021, '4', Some('$')),
+            (0x07_0022, '5', Some('%')),
+            (0x07_0023, '6', Some('^')),
+            (0x07_0024, '7', Some('&')),
+            (0x07_0025, '8', Some('*')),
+            (0x07_0026, '9', Some('(')),
+            (0x07_0027, '0', Some(')')),
+            (0x07_0028, '\n', None),
+            (0x07_002b, '\t', None),
+            (0x07_002c, ' ', None),
+            (0x07_002d, '-', Some('_')),
+            (0x07_002e, '=', Some('+')),
+            (0x07_002f, '[', Some('{')),
+            (0x07_0030, ']', Some('}')),
+            (0x07_0031, '\\', Some('|')),
+            (0x07_0033, ';', Some(':')),
+            (0x07_0034, '\'', Some('"')),
+            (0x07_0035, '`', Some('~')),
+            (0x07_0036, ',', Some('<')),
+            (0x07_0037, '.', Some('>')),
+            (0x07_0038, '/', Some('?')),
+        ];
+        for (usage, plain, shifted) in cases {
+            assert_eq!(char_keys(plain).unwrap(), (None, usage), "{plain:?}");
+            if let Some(c) = shifted {
+                assert_eq!(char_keys(c).unwrap(), (Some(0x07_00e1), usage), "{c:?}");
+            }
+        }
         assert!(char_keys('é').is_err());
-        // Every printable ASCII character has a key.
-        for c in (b' '..=b'~').map(char::from) {
-            assert!(char_keys(c).is_ok(), "{c:?}");
+    }
+
+    #[test]
+    fn named_keys_match_legacy_windows_usages() {
+        // The pre-M4 Windows usages for all 66 names/aliases and F1–F12.
+        let cases: &[(u32, &[&str])] = &[
+            (0x07_0028, &["enter", "return"]),
+            (0x07_0029, &["esc", "escape"]),
+            (0x07_002a, &["backspace"]),
+            (0x07_002b, &["tab"]),
+            (0x07_002c, &["space"]),
+            (0x07_002e, &["equal"]),
+            (0x07_0039, &["capslock"]),
+            (0x07_003a, &["f1"]),
+            (0x07_003b, &["f2"]),
+            (0x07_003c, &["f3"]),
+            (0x07_003d, &["f4"]),
+            (0x07_003e, &["f5"]),
+            (0x07_003f, &["f6"]),
+            (0x07_0040, &["f7"]),
+            (0x07_0041, &["f8"]),
+            (0x07_0042, &["f9"]),
+            (0x07_0043, &["f10"]),
+            (0x07_0044, &["f11"]),
+            (0x07_0045, &["f12"]),
+            (0x07_0046, &["printscreen"]),
+            (0x07_0047, &["scrolllock"]),
+            (0x07_0048, &["pause"]),
+            (0x07_0049, &["insert"]),
+            (0x07_004a, &["home"]),
+            (0x07_004b, &["pageup"]),
+            (0x07_004c, &["del", "delete"]),
+            (0x07_004d, &["end"]),
+            (0x07_004e, &["pagedown"]),
+            (0x07_004f, &["right"]),
+            (0x07_0050, &["left"]),
+            (0x07_0051, &["down"]),
+            (0x07_0052, &["up"]),
+            (0x07_0053, &["numlock"]),
+            (0x07_0054, &["kpdivide"]),
+            (0x07_0055, &["kpmultiply"]),
+            (0x07_0056, &["kpminus"]),
+            (0x07_0057, &["kpplus"]),
+            (0x07_0058, &["kpenter"]),
+            (0x07_0059, &["kp1"]),
+            (0x07_005a, &["kp2"]),
+            (0x07_005b, &["kp3"]),
+            (0x07_005c, &["kp4"]),
+            (0x07_005d, &["kp5"]),
+            (0x07_005e, &["kp6"]),
+            (0x07_005f, &["kp7"]),
+            (0x07_0060, &["kp8"]),
+            (0x07_0061, &["kp9"]),
+            (0x07_0062, &["kp0"]),
+            (0x07_0063, &["kpdecimal"]),
+            (0x07_0065, &["apps", "menu"]),
+            (0x07_00e0, &["ctrl", "lctrl"]),
+            (0x07_00e1, &["lshift", "shift"]),
+            (0x07_00e2, &["alt", "lalt"]),
+            (0x07_00e3, &["lwin", "win"]),
+            (0x07_00e4, &["rctrl"]),
+            (0x07_00e5, &["rshift"]),
+            (0x07_00e6, &["altgr", "ralt"]),
+            (0x07_00e7, &["rwin"]),
+            (0x0c_00b5, &["medianext", "nexttrack"]),
+            (0x0c_00b6, &["mediaprev", "prevtrack"]),
+            (0x0c_00b7, &["mediastop"]),
+            (0x0c_00cd, &["mediaplaypause", "playpause"]),
+            (0x0c_00e2, &["mute", "volumemute"]),
+            (0x0c_00e9, &["volumeup"]),
+            (0x0c_00ea, &["volumedown"]),
+        ];
+        for &(usage, names) in cases {
+            for &name in names {
+                assert_eq!(parse_key(name).unwrap().usage, usage, "{name}");
+            }
         }
     }
 
