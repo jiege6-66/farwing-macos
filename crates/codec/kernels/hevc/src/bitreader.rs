@@ -121,6 +121,20 @@ impl<'a> BitReader<'a> {
         i32::try_from(value).map_err(|_| BitReaderError::ExpGolombOverflow)
     }
 
+    /// Check that the parsed body ends at the RBSP stop bit. For syntax
+    /// ending with extension_data_flag bits, the opaque bits precede that bit.
+    pub(crate) fn has_rbsp_end(&self, extension_data: bool) -> bool {
+        let Some(last) = self.buf.last().filter(|&&last| last != 0) else {
+            return false;
+        };
+        let stop_bit = self.buf.len() * 8 - 1 - last.trailing_zeros() as usize;
+        if extension_data {
+            self.bit_pos <= stop_bit
+        } else {
+            self.bit_pos == stop_bit
+        }
+    }
+
     pub fn bit_pos(&self) -> usize {
         self.bit_pos
     }

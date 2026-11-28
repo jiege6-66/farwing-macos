@@ -2,6 +2,8 @@ use super::{Bitstream, Configuration, Sample};
 use crate::media::{VideoCodec, decoder::fixtures, video_format};
 use farwing_codec::syntax::av1::obu::Units;
 
+mod review;
+
 const SIZES: [(u32, u32); 4] = [(1280, 720), (1920, 1080), (2560, 1440), (3840, 2160)];
 const CODECS: [VideoCodec; 3] = [VideoCodec::H264, VideoCodec::H265, VideoCodec::Av1];
 
@@ -92,7 +94,7 @@ fn converts_every_matrix_fixture() {
                         }
                         Configuration::AnnexB { vps, sps, pps, .. } => {
                             let expected: Vec<&[u8]> =
-                                vps.iter().chain([sps, pps]).map(Vec::as_slice).collect();
+                                vps.iter().chain([sps, pps]).map(AsRef::as_ref).collect();
                             let units = video_format::annex_b_units(&picture);
                             assert_eq!(
                                 expected,

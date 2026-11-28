@@ -4,7 +4,7 @@
 
 use crate::bitreader::{BitReader, BitReaderError};
 
-use crate::hrd::HrdError;
+use crate::hrd::{HrdError, HrdParameters};
 
 pub const HEVC_MAX_SUB_LAYERS: usize = 7;
 
@@ -58,6 +58,89 @@ impl From<HrdError> for VpsError {
             other => Self::Hrd(other),
         }
     }
+}
+
+/// Validate a single-layer VPS RBSP (H.265 §7.3.2.1) and return its ID.
+/// Only the base syntax is interpreted; extension_data_flag bits are opaque.
+pub fn parse_base_layer_vps_id(rbsp: &[u8]) -> Result<u8, VpsError> {
+    let mut br = BitReader::new(rbsp);
+    let id = br.u(4)? as u8;
+    br.skip(2)?; // base_layer_internal_flag and base_layer_available_flag
+    let max_layers_minus1 = br.u(6)?;
+    let max_sub_layers_minus1 = br.u(3)? as u8;
+    let temporal_nesting = br.u1()?;
+    bounded("vps_max_layers_minus1", max_layers_minus1, 0)?;
+    bounded("vps_max_sub_layers_minus1", max_sub_layers_minus1.into(), 6)?;
+    if max_sub_layers_minus1 == 0 && temporal_nesting == 0 {
+        return Err(VpsError::ValueOutOfRange {
+            field: "vps_temporal_id_nesting_flag",
+            got: 0,
+        });
+    }
+    let reserved = br.u(16)? as u16;
+    if reserved != 0xffff {
+        return Err(VpsError::ReservedFieldMismatch { got: reserved });
+    }
+    ProfileTierLevel::parse(&mut br, true, max_sub_layers_minus1)?;
+
+    let first = if br.u1()? == 0 {
+        max_sub_layers_minus1
+    } else {
+        0
+    };
+    for _ in first..=max_sub_layers_minus1 {
+        let buffering = br.ue()?;
+        bounded("vps_max_num_reorder_pics", br.ue()?, buffering)?;
+        br.ue()?; // vps_max_latency_increase_plus1
+    }
+    let max_layer_id = br.u(6)?;
+    bounded("vps_max_layer_id", max_layer_id, 62)?;
+    let layer_sets = br.ue()?;
+    bounded(
+        "vps_num_layer_sets_minus1",
+        layer_sets,
+        HEVC_VPS_MAX_NUM_LAYER_SETS as u32 - 1,
+    )?;
+    br.skip((layer_sets * (max_layer_id + 1)) as usize)?; // layer_id_included_flag
+    if br.u1()? != 0 {
+        for field in ["vps_num_units_in_tick", "vps_time_scale"] {
+            if br.u(32)? == 0 {
+                return Err(VpsError::ValueOutOfRange { field, got: 0 });
+            }
+        }
+        if br.u1()? != 0 {
+            br.ue()?; // vps_num_ticks_poc_diff_one_minus1
+        }
+        let hrd_count = br.ue()?;
+        bounded("vps_num_hrd_parameters", hrd_count, layer_sets + 1)?;
+        let mut common = None;
+        for index in 0..hrd_count {
+            bounded("hrd_layer_set_idx", br.ue()?, layer_sets)?;
+            let common_present = index == 0 || br.u1()? != 0;
+            let hrd = HrdParameters::parse(
+                &mut br,
+                common_present,
+                max_sub_layers_minus1,
+                common.as_ref(),
+            )?;
+            common = hrd.common.or(common);
+        }
+    }
+    let extension = br.u1()? != 0;
+    if !br.has_rbsp_end(extension) {
+        return Err(VpsError::ValueOutOfRange {
+            field: "rbsp_trailing_bits",
+            got: 0,
+        });
+    }
+    Ok(id)
+}
+
+fn bounded(field: &'static str, got: u32, max: u32) -> Result<(), VpsError> {
+    if got > max {
+        return Err(VpsError::ValueOutOfRange { field, got });
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

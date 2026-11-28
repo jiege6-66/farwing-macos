@@ -1,21 +1,63 @@
 //! Prepares one Farwing access unit at a time for CoreMedia. No FFI or session state.
+//!
+//! HEVC random access is not always closed: `Sample::hevc_vcl_nal_type` is 19/20
+//! for IDR, 16–18 for BLA and 21 for CRA. T2b must handle associated RASL
+//! (types 8/9) on entry at CRA/BLA; this module neither sends nor drops those
+//! pictures on behalf of the decoder. AVC recovery-point SEI is not an IDR.
 
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, anyhow, bail, ensure};
+use bytes::Bytes;
 use farwing_codec::syntax::{
     av1::{
         Chroma, Sequence,
         obu::{Obu, Units},
+        syntax::{FrameStart, FrameType},
     },
-    h264::{pps::Pps, sps::Sps},
-    hevc::{pps::PicParameterSet, sps::SeqParameterSet},
+    h264::{nal::AnnexBSplitter, pps::Pps, sps::Sps},
+    hevc::{pps::PicParameterSet, sps::SeqParameterSet, vps::parse_base_layer_vps_id},
 };
 
 use crate::media::{
     VideoCodec, av1,
+    decode_api::DecodeError,
     video_format::{self, BitReader, VideoFormatSignature, remove_emulation_prevention},
 };
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum BitstreamError {
+    #[error("missing codec parameters: {0}")]
+    MissingParameters(&'static str),
+    #[error("invalid decode input: {0}")]
+    InvalidInput(#[source] anyhow::Error),
+    #[error("unsupported bitstream: {0}")]
+    Unsupported(&'static str),
+}
+
+impl BitstreamError {
+    pub(crate) fn decode_error(&self) -> DecodeError {
+        match self {
+            Self::MissingParameters(_) => DecodeError::NeedKeyframe,
+            Self::InvalidInput(_) => DecodeError::InvalidInput,
+            Self::Unsupported(_) => DecodeError::Unsupported,
+        }
+    }
+}
+
+impl From<BitstreamError> for DecodeError {
+    fn from(error: BitstreamError) -> Self {
+        error.decode_error()
+    }
+}
+
+impl From<anyhow::Error> for BitstreamError {
+    fn from(error: anyhow::Error) -> Self {
+        error.downcast::<Self>().unwrap_or_else(Self::InvalidInput)
+    }
+}
+
+type BitstreamResult<T> = std::result::Result<T, BitstreamError>;
 
 /// Compare this with the configuration installed in the decoder, not just
 /// with the previous packet's configuration (parameter-only packets can update it).
@@ -23,9 +65,9 @@ use crate::media::{
 pub(crate) enum Configuration {
     AnnexB {
         /// Raw NALs, including NAL headers, but without start codes or lengths.
-        vps: Option<Vec<u8>>,
-        sps: Vec<u8>,
-        pps: Vec<u8>,
+        vps: Option<Bytes>,
+        sps: Bytes,
+        pps: Bytes,
         format: VideoFormatSignature,
     },
     Av1 {
@@ -48,18 +90,118 @@ pub(crate) struct Sample {
     /// Four-byte big-endian NAL lengths, or sized AV1 OBUs.
     pub(crate) data: Vec<u8>,
     pub(crate) has_picture: bool,
-    /// AVC IDR, HEVC IRAP, or an AV1 key frame with an in-band sequence header.
+    /// AVC IDR, HEVC IRAP, or AV1 with an in-band sequence header followed
+    /// by a shown key frame as the first frame (AV1-ISOBMFF §2.4).
     pub(crate) is_keyframe: bool,
     pub(crate) configuration_changed: bool,
+    /// First VCL NAL type for HEVC pictures; `None` for other codecs or no picture.
+    pub(crate) hevc_vcl_nal_type: Option<u8>,
 }
 
+#[derive(Clone)]
 struct Parameter {
-    nal: Vec<u8>,
+    nal: Bytes,
     parent_id: u32,
     format: Option<VideoFormatSignature>,
+    avc_pps_chroma444: Option<bool>,
 }
 
-type Parameters = BTreeMap<(u8, u32), Parameter>;
+#[derive(Clone, Default)]
+struct Parameters {
+    verified: BTreeMap<(u8, u32), Parameter>,
+    // An AVC PPS can arrive before its SPS. It must not shadow a verified PPS.
+    pending_avc_pps: BTreeMap<u32, Parameter>,
+}
+
+impl Parameters {
+    fn insert(&mut self, kind: u8, id: u32, mut entry: Parameter, hevc: bool) -> Result<()> {
+        if !hevc && kind == 8 {
+            let rbsp = remove_emulation_prevention(&entry.nal[1..]);
+            let parent = self
+                .verified
+                .get(&(7, entry.parent_id))
+                .and_then(|sps| sps.format);
+            if let Some(format) = parent {
+                Pps::parse_complete(&rbsp, format.chroma_format_idc.into())
+                    .context("invalid H.264 PPS")?;
+                entry.avc_pps_chroma444 = Some(format.chroma_format_idc == 3);
+                self.pending_avc_pps.remove(&id);
+            } else {
+                // Reject truncation now even if the precise scaling-list syntax
+                // (4:4:4 versus all others) still depends on the parent.
+                Pps::parse_complete(&rbsp, 1)
+                    .or_else(|_| Pps::parse_complete(&rbsp, 3))
+                    .context("invalid H.264 PPS")?;
+                self.pending_avc_pps.insert(id, entry);
+                return Ok(());
+            }
+        } else if !hevc && kind == 7 {
+            let chroma = entry
+                .format
+                .context("missing H.264 SPS format")?
+                .chroma_format_idc;
+            for pps in self
+                .pending_avc_pps
+                .values()
+                .filter(|pps| pps.parent_id == id)
+            {
+                validate_avc_pps(pps, chroma)?;
+            }
+            self.pending_avc_pps.retain(|&pps_id, pps| {
+                if pps.parent_id == id {
+                    pps.avc_pps_chroma444 = Some(chroma == 3);
+                    self.verified.insert((8, pps_id), pps.clone());
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+        self.verified.insert((kind, id), entry);
+        Ok(())
+    }
+
+    fn configuration(&self, hevc: bool, pps_id: u32) -> Option<Configuration> {
+        let pps = self.verified.get(&(if hevc { 34 } else { 8 }, pps_id))?;
+        let sps = self
+            .verified
+            .get(&(if hevc { 33 } else { 7 }, pps.parent_id))?;
+        let format = sps.format?;
+        let chroma = format.chroma_format_idc;
+        if pps
+            .avc_pps_chroma444
+            .is_some_and(|is_444| is_444 != (chroma == 3))
+        {
+            // The cached PPS was verified under a different SPS. Only reuse
+            // it if its scaling-list syntax also fits the SPS at selection.
+            validate_avc_pps(pps, chroma).ok()?;
+        }
+        let vps = if hevc {
+            Some(self.verified.get(&(32, sps.parent_id))?.nal.clone())
+        } else {
+            None
+        };
+        Some(Configuration::AnnexB {
+            vps,
+            sps: sps.nal.clone(),
+            pps: pps.nal.clone(),
+            format,
+        })
+    }
+
+    fn first_configuration(&self, hevc: bool) -> Option<(u32, Configuration)> {
+        let pps_kind = if hevc { 34 } else { 8 };
+        self.verified
+            .range((pps_kind, 0)..=(pps_kind, u32::MAX))
+            .find_map(|(&(_, id), _)| Some((id, self.configuration(hevc, id)?)))
+    }
+}
+
+fn validate_avc_pps(pps: &Parameter, chroma: u8) -> Result<()> {
+    Pps::parse_complete(&remove_emulation_prevention(&pps.nal[1..]), chroma.into())
+        .context("invalid H.264 PPS for its SPS")?;
+    Ok(())
+}
 
 pub(crate) struct Bitstream {
     codec: VideoCodec,
@@ -71,18 +213,17 @@ pub(crate) struct Bitstream {
 impl Bitstream {
     /// Farwing extradata is empty, Annex-B parameter sets, or AV1 sequence OBUs,
     /// not a container's avcC/hvcC/av1C record.
-    pub(crate) fn new(codec: VideoCodec, extra_data: &[u8]) -> Result<Self> {
+    pub(crate) fn new(codec: VideoCodec, extra_data: &[u8]) -> BitstreamResult<Self> {
         let mut stream = Self {
             codec,
-            parameters: Parameters::new(),
+            parameters: Parameters::default(),
             active_pps: None,
             configuration: None,
         };
-        if !extra_data.is_empty() {
-            ensure!(
-                !stream.prepare(extra_data)?.has_picture,
+        if !extra_data.is_empty() && stream.prepare(extra_data)?.has_picture {
+            return Err(BitstreamError::InvalidInput(anyhow!(
                 "picture in codec extradata"
-            );
+            )));
         }
         Ok(stream)
     }
@@ -91,140 +232,117 @@ impl Bitstream {
         self.configuration.as_ref()
     }
 
-    /// Call with an already framed access unit, not an entire elementary stream.
-    /// A framing/header error leaves the previous configuration intact. This is
-    /// not an entropy decoder; validation of coded picture data belongs to VT.
-    pub(crate) fn prepare(&mut self, data: &[u8]) -> Result<Sample> {
-        ensure!(!data.is_empty(), "empty access unit");
-        if self.codec == VideoCodec::Av1 {
+    /// Call with one already framed access unit (one temporal unit for AV1).
+    /// An error leaves both the parameter cache and configuration untouched.
+    /// Validation of coded picture data, beyond framing and headers, belongs to VT.
+    pub(crate) fn prepare(&mut self, data: &[u8]) -> BitstreamResult<Sample> {
+        if data.is_empty() {
+            return Err(BitstreamError::InvalidInput(anyhow!("empty access unit")));
+        }
+        let sample = if self.codec == VideoCodec::Av1 {
             self.prepare_av1(data)
         } else {
             self.prepare_annex_b(data)
-        }
+        }?;
+        Ok(sample)
     }
 
     fn prepare_annex_b(&mut self, data: &[u8]) -> Result<Sample> {
         let hevc = self.codec == VideoCodec::H265;
-        let start_code = |data: &[u8]| data.windows(3).position(|w| w == [0, 0, 1]);
-        let start = start_code(data).context("missing Annex-B start code")?;
+        let leading_zeroes = data.iter().take_while(|&&byte| byte == 0).count();
         ensure!(
-            data[..start].iter().all(|&v| v == 0),
-            "garbage before Annex-B start code"
+            leading_zeroes >= 2 && data.get(leading_zeroes) == Some(&1),
+            "missing Annex-B start code"
         );
-        let mut remaining = &data[start + 3..];
-        let mut updates = Parameters::new();
-        let mut sample = Vec::new();
-        let mut is_keyframe = false;
-        let mut picture_pps = None;
-        loop {
-            let next = start_code(remaining);
-            // A four-byte start code has an extra zero immediately before
-            // the three-byte prefix; strip it along with trailing_zero_8bits.
-            let nal = &remaining[..next.unwrap_or(remaining.len())];
-            let end = nal.iter().rposition(|&v| v != 0).map_or(0, |i| i + 1);
-            let nal = &nal[..end];
+        // Normal VCL-only packets borrow the cache. Parameter updates use a
+        // shallow snapshot and commit only after the entire AU is accepted.
+        let mut parameters = Cow::Borrowed(&self.parameters);
+        let mut sample = Vec::with_capacity(data.len());
+        let mut picture = None;
+        for nal in AnnexBSplitter::new(data) {
             let (kind, header_len) = nal_header(hevc, nal).context("invalid or truncated NAL")?;
+            if !hevc && kind == 13 {
+                bail!(BitstreamError::Unsupported(
+                    "AVC SPS extension (NAL type 13)"
+                ));
+            }
+            ensure!(
+                !hevc || !matches!(kind, 22 | 23),
+                "reserved HEVC VCL NAL type {kind}"
+            );
             if if hevc {
                 matches!(kind, 32..=34)
             } else {
                 matches!(kind, 7 | 8)
             } {
-                let (id, entry) = parameter(hevc, kind, nal, header_len)
-                    .context("invalid or truncated parameter set")?;
-                updates.insert((kind, id), entry);
-            } else {
-                if if hevc {
-                    kind <= 31
-                } else {
-                    matches!(kind, 1 | 2 | 5)
-                } {
-                    let id = slice_pps(hevc, kind, &nal[header_len..])
-                        .context("invalid or truncated slice header")?;
+                let (id, entry) = parameter(hevc, kind, nal, header_len)?;
+                parameters.to_mut().insert(kind, id, entry, hevc)?;
+                if let Some((pps_id, _, ref at_vcl)) = picture {
+                    // Unrelated IDs and identical reannouncements can be
+                    // cached for future AUs, but must not change this chain.
                     ensure!(
-                        picture_pps.is_none_or(|pps| pps == id),
-                        "multiple PPS IDs in one picture"
+                        parameters.configuration(hevc, pps_id).as_ref() == Some(at_vcl),
+                        "parameter set changes the active chain after VCL"
                     );
-                    picture_pps = Some(id);
-                    is_keyframe |= if hevc {
-                        matches!(kind, 16..=23)
-                    } else {
-                        kind == 5
-                    };
                 }
-                // Preserve AUD, SEI and other non-parameter-set NALs in order,
-                // like the previous generic Annex-B converter.
-                sample.extend_from_slice(&u32::try_from(nal.len())?.to_be_bytes());
-                sample.extend_from_slice(nal);
+                continue;
             }
-            let Some(next) = next else { break };
-            remaining = &remaining[next + 3..];
+            if if hevc {
+                kind <= 31
+            } else {
+                matches!(kind, 1 | 2 | 5)
+            } {
+                let id = slice_pps(hevc, kind, &nal[header_len..])
+                    .context("invalid or truncated slice header")?;
+                if let Some((pps_id, _, _)) = picture {
+                    ensure!(pps_id == id, "multiple PPS IDs in one picture");
+                } else {
+                    let config = parameters.configuration(hevc, id).ok_or(
+                        BitstreamError::MissingParameters(
+                            "Annex-B picture references an incomplete chain",
+                        ),
+                    )?;
+                    picture = Some((id, kind, config));
+                }
+            }
+            // Keep AUD, SEI, EOS and other non-parameter-set NALs in order.
+            sample.extend_from_slice(&u32::try_from(nal.len())?.to_be_bytes());
+            sample.extend_from_slice(nal);
         }
 
-        let candidates = |kind, id| {
-            updates
-                .get(&(kind, id))
-                .or_else(|| self.parameters.get(&(kind, id)))
+        let (pps_id, kind, configuration) = if let Some((id, kind, config)) = picture {
+            (Some(id), Some(kind), Some(config))
+        } else if let Some(id) = self.active_pps {
+            (Some(id), None, parameters.configuration(hevc, id))
+        } else if let Some((id, config)) = parameters.first_configuration(hevc) {
+            (Some(id), None, Some(config))
+        } else {
+            (None, None, None)
         };
-        let pps_kind = if hevc { 34 } else { 8 };
-        let get_chain = |id| {
-            let pps = candidates(pps_kind, id)?;
-            let sps = candidates(if hevc { 33 } else { 7 }, pps.parent_id)?;
-            let vps = if hevc {
-                Some(candidates(32, sps.parent_id)?)
-            } else {
-                None
-            };
-            Some((vps, sps, pps))
-        };
-        // Without VCL, preserve the active chain or seed the first complete
-        // chain from extradata. A VCL header selects its actual PPS by ID.
-        let pps_id = picture_pps.or(self.active_pps).or_else(|| {
-            updates
-                .keys()
-                .chain(self.parameters.keys())
-                .find_map(|&(kind, id)| (kind == pps_kind && get_chain(id).is_some()).then_some(id))
-        });
-        let chain = pps_id.and_then(get_chain);
-        ensure!(
-            picture_pps.is_none() || chain.is_some(),
-            "missing parameter set for picture"
-        );
-        let mut configuration_changed = false;
-        if let Some((vps, sps, pps)) = chain {
-            let vps = vps.map(|v| &v.nal);
-            let unchanged = matches!(
-                &self.configuration,
-                Some(Configuration::AnnexB { vps: old_vps, sps: old_sps, pps: old_pps, .. })
-                    if old_vps.as_ref() == vps && old_sps == &sps.nal && old_pps == &pps.nal
-            );
-            if !unchanged {
-                let format = sps.format.context("missing SPS format")?;
-                if !hevc {
-                    let rbsp = remove_emulation_prevention(&pps.nal[1..]);
-                    Pps::parse_with_chroma_format(&rbsp, format.chroma_format_idc.into())
-                        .context("invalid H.264 PPS")?;
-                }
-                self.configuration = Some(Configuration::AnnexB {
-                    vps: vps.cloned(),
-                    sps: sps.nal.clone(),
-                    pps: pps.nal.clone(),
-                    format,
-                });
-                configuration_changed = true;
-            }
-            self.active_pps = pps_id;
+        if let Cow::Owned(parameters) = parameters {
+            self.parameters = parameters;
         }
-        self.parameters.extend(updates);
+        self.active_pps = pps_id;
+        let configuration_changed = self.configuration != configuration;
+        if configuration_changed {
+            self.configuration = configuration;
+        }
         Ok(Sample {
             data: sample,
-            has_picture: picture_pps.is_some(),
-            is_keyframe,
+            has_picture: kind.is_some(),
+            is_keyframe: if hevc {
+                matches!(kind, Some(16..=21))
+            } else {
+                kind == Some(5)
+            },
             configuration_changed,
+            hevc_vcl_nal_type: if hevc { kind } else { None },
         })
     }
 
     fn prepare_av1(&mut self, data: &[u8]) -> Result<Sample> {
-        let mut sample = Vec::new();
+        let units = Units::with_unsized_last(data)?;
+        let mut sample = Vec::with_capacity(data.len());
         let mut sequence = None;
         let mut av1c = Vec::new();
         let mut reduced = match self.configuration {
@@ -236,9 +354,10 @@ impl Bitstream {
         };
         let mut has_picture = false;
         let mut is_keyframe = false;
-        let mut tile_group_seen = None;
-        for obu in Units::with_unsized_last(data)? {
+        let mut split_frame = None;
+        for (i, obu) in units.enumerate() {
             let obu = obu?;
+            let layer = (obu.temporal_id, obu.spatial_id);
             match obu.kind {
                 1 => {
                     ensure!(!has_picture, "AV1 sequence header after frame");
@@ -253,34 +372,41 @@ impl Bitstream {
                     reduced = Some(parsed.reduced_still_picture_header);
                 }
                 2 => {
-                    ensure!(obu.payload.is_empty(), "invalid AV1 temporal delimiter");
+                    ensure!(
+                        i == 0 && obu.payload.is_empty(),
+                        "unexpected AV1 temporal delimiter"
+                    );
                     continue;
                 }
                 3 | 6 => {
-                    ensure!(tile_group_seen != Some(false), "missing AV1 tile group");
-                    let reduced = reduced.context("missing AV1 sequence header for picture")?;
-                    ensure!(!obu.payload.is_empty(), "empty AV1 frame header");
-                    let mut bits = BitReader::new(obu.payload);
-                    let show_existing = !reduced && bits.read_bit() == Some(1);
-                    let key = if show_existing {
-                        ensure!(
-                            obu.kind == 3 && bits.read_bits(3).is_some(),
-                            "invalid AV1 show_existing_frame"
-                        );
-                        false
-                    } else {
-                        reduced || bits.read_bits(2).context("missing AV1 frame type")? == 0
-                    };
-                    tile_group_seen = (obu.kind == 3 && !show_existing).then_some(false);
-                    has_picture = true;
-                    is_keyframe |= sequence.is_some() && key;
+                    ensure!(
+                        !matches!(split_frame, Some((_, false))),
+                        "missing AV1 tile group"
+                    );
+                    let reduced = reduced.ok_or(BitstreamError::MissingParameters(
+                        "AV1 picture has no sequence header",
+                    ))?;
+                    let start = FrameStart::parse(obu, reduced).map_err(anyhow::Error::msg)?;
+                    split_frame = (obu.kind == 3 && matches!(start, FrameStart::New { .. }))
+                        .then_some((layer, false));
+                    if !has_picture {
+                        is_keyframe = sequence.is_some()
+                            && matches!(
+                                start,
+                                FrameStart::New {
+                                    frame_type: FrameType::KeyFrame,
+                                    show_frame: true,
+                                }
+                            );
+                        has_picture = true;
+                    }
                 }
                 4 => {
                     ensure!(
-                        tile_group_seen.is_some() && !obu.payload.is_empty(),
-                        "unexpected or empty AV1 tile group"
+                        !obu.payload.is_empty() && split_frame.is_some_and(|(id, _)| id == layer),
+                        "unexpected, empty or mismatched-layer AV1 tile group"
                     );
-                    tile_group_seen = Some(true);
+                    split_frame = Some((layer, true));
                 }
                 _ => {}
             }
@@ -290,7 +416,10 @@ impl Bitstream {
                 sample.extend_from_slice(obu.bytes);
             }
         }
-        ensure!(tile_group_seen != Some(false), "missing AV1 tile group");
+        ensure!(
+            !matches!(split_frame, Some((_, false))),
+            "missing AV1 tile group"
+        );
         let mut configuration_changed = false;
         if let Some(sequence) = sequence {
             let configuration = Configuration::Av1 {
@@ -308,6 +437,7 @@ impl Bitstream {
             has_picture,
             is_keyframe,
             configuration_changed,
+            hevc_vcl_nal_type: None,
         })
     }
 }
@@ -319,72 +449,74 @@ fn nal_header(hevc: bool, nal: &[u8]) -> Option<(u8, usize)> {
     }
     if hevc {
         let second = *nal.get(1)?;
+        let kind = (header >> 1) & 63;
         // Farwing sends single-layer base streams; temporal_id_plus1 cannot be zero.
-        (nal.len() >= 3 && header & 1 == 0 && second >> 3 == 0 && second & 7 != 0)
-            .then_some(((header >> 1) & 63, 2))
+        (header & 1 == 0
+            && second >> 3 == 0
+            && second & 7 != 0
+            && (nal.len() >= 3 || matches!(kind, 36 | 37)))
+        .then_some((kind, 2))
     } else {
         let kind = header & 31;
-        (nal.len() >= 2 && matches!(kind, 1..=23)).then_some((kind, 1))
+        (matches!(kind, 1..=23) && (nal.len() >= 2 || matches!(kind, 10 | 11))).then_some((kind, 1))
     }
 }
 
-fn parameter(hevc: bool, kind: u8, nal: &[u8], header_len: usize) -> Option<(u32, Parameter)> {
-    if nal.len() > 65536 {
-        return None;
-    }
-    let rbsp = remove_emulation_prevention(nal.get(header_len..)?);
+fn parameter(hevc: bool, kind: u8, nal: &[u8], header_len: usize) -> Result<(u32, Parameter)> {
+    ensure!(nal.len() <= 65536, "parameter NAL too large");
+    let rbsp = remove_emulation_prevention(&nal[header_len..]);
     let (id, parent_id, format) = match (hevc, kind) {
         (false, 7) => {
-            let sps = Sps::parse(&rbsp).ok()?;
-            (
-                sps.seq_parameter_set_id,
-                0,
-                Some(video_format::parse_h264_sps(nal)?),
-            )
+            let sps = Sps::parse_complete(&rbsp).context("invalid H.264 SPS")?;
+            let format = video_format::parse_h264_sps(nal).context("invalid H.264 SPS format")?;
+            (sps.seq_parameter_set_id, 0, Some(format))
         }
         (false, 8) => {
-            if rbsp.len() < 2 {
-                return None;
-            }
             let mut bits = BitReader::new(&rbsp);
-            let (id, sps) = (bits.read_ue()?, bits.read_ue()?);
-            if id > 255 || sps > 31 {
-                return None;
-            }
+            let id = bits.read_ue().context("missing H.264 PPS id")?;
+            let sps = bits
+                .read_ue()
+                .context("missing parent SPS id in H.264 PPS")?;
+            ensure!(id <= 255 && sps <= 31, "invalid H.264 PPS or parent id");
             (id, sps, None)
         }
-        (true, 32) => {
-            let mut bits = BitReader::new(&rbsp);
-            let id = bits.read_bits(4)?;
-            bits.skip_bits(8)?; // base layer flags and max_layers_minus1
-            let layers = bits.read_bits(3)?;
-            bits.read_bit()?; // temporal_id_nesting_flag
-            if layers > 6 || bits.read_bits(16)? != 0xffff {
-                return None;
-            }
-            video_format::skip_h265_profile_tier_level(&mut bits, layers as usize)?;
-            (id, 0, None)
-        }
+        (true, 32) => (
+            parse_base_layer_vps_id(&rbsp)
+                .context("invalid HEVC VPS")?
+                .into(),
+            0,
+            None,
+        ),
         (true, 33) => {
-            let sps = SeqParameterSet::parse(&rbsp).ok()?;
-            (
-                sps.sps_id.into(),
-                sps.vps_id.into(),
-                Some(video_format::parse_h265_sps(nal)?),
-            )
+            let sps = SeqParameterSet::parse_complete(&rbsp).context("invalid HEVC SPS")?;
+            ensure!(
+                sps.extension_flags
+                    .is_none_or(|flags| !(flags.sps_multilayer_extension_flag
+                        || flags.sps_3d_extension_flag)),
+                BitstreamError::Unsupported("HEVC multilayer or 3D SPS extension")
+            );
+            let format = video_format::parse_h265_sps(nal).context("invalid HEVC SPS format")?;
+            (sps.sps_id.into(), sps.vps_id.into(), Some(format))
         }
         (true, 34) => {
-            let pps = PicParameterSet::parse(&rbsp).ok()?;
+            let pps = PicParameterSet::parse_complete(&rbsp).context("invalid HEVC PPS")?;
+            ensure!(
+                pps.extension_flags
+                    .is_none_or(|flags| !(flags.pps_multilayer_extension_flag
+                        || flags.pps_3d_extension_flag)),
+                BitstreamError::Unsupported("HEVC multilayer or 3D PPS extension")
+            );
             (pps.pps_id.into(), pps.sps_id.into(), None)
         }
-        _ => return None,
+        _ => bail!("not a parameter NAL"),
     };
-    Some((
+    Ok((
         id,
         Parameter {
-            nal: nal.to_vec(),
+            nal: Bytes::copy_from_slice(nal),
             parent_id,
             format,
+            avc_pps_chroma444: None,
         },
     ))
 }
@@ -395,11 +527,22 @@ fn slice_pps(hevc: bool, kind: u8, ebsp: &[u8]) -> Option<u32> {
     }
     // The PPS ID is in the bounded prefix of a slice header. Never unescape
     // the coded picture just to read it.
-    let rbsp = remove_emulation_prevention(&ebsp[..ebsp.len().min(64)]);
-    let mut bits = BitReader::new(&rbsp);
+    let mut rbsp = [0u8; 64];
+    let mut len = 0;
+    let mut zeroes = 0;
+    for &byte in ebsp.iter().take(rbsp.len()) {
+        if zeroes >= 2 && byte == 3 {
+            zeroes = 0;
+            continue;
+        }
+        rbsp[len] = byte;
+        len += 1;
+        zeroes = if byte == 0 { zeroes + 1 } else { 0 };
+    }
+    let mut bits = BitReader::new(&rbsp[..len]);
     if hevc {
         bits.read_bit()?; // first_slice_segment_in_pic_flag
-        if matches!(kind, 16..=23) {
+        if matches!(kind, 16..=21) {
             bits.read_bit()?; // no_output_of_prior_pics_flag
         }
     } else {

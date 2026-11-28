@@ -370,6 +370,18 @@ impl PicParameterSet {
         Self::parse_inner(&mut br, rbsp)
     }
 
+    pub fn parse_complete(rbsp: &[u8]) -> Result<Self, PpsError> {
+        let mut br = BitReader::new(rbsp);
+        let pps = Self::parse_inner(&mut br, rbsp)?;
+        if !br.has_rbsp_end(pps.opaque_tail.is_some()) {
+            return Err(PpsError::ValueOutOfRange {
+                field: "rbsp_trailing_bits",
+                got: 0,
+            });
+        }
+        Ok(pps)
+    }
+
     fn parse_inner(br: &mut BitReader<'_>, rbsp: &[u8]) -> Result<Self, PpsError> {
         let pps_id_raw = br.ue()?;
         if pps_id_raw > 63 {

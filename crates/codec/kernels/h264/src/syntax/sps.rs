@@ -150,6 +150,16 @@ impl Sps {
         Ok(sps)
     }
 
+    pub fn parse_complete(rbsp: &[u8]) -> Result<Self, SpsError> {
+        let mut r = BitReader::new(rbsp);
+        let sps = Self::parse_seq_parameter_set_data(&mut r)?;
+        r.rbsp_trailing_bits()?;
+        if r.bits_remaining() != 0 {
+            return Err(BitError::BadTrailingBits.into());
+        }
+        Ok(sps)
+    }
+
     pub fn parse_seq_parameter_set_data(r: &mut BitReader<'_>) -> Result<Self, SpsError> {
         // §7.3.2.1.1 — profile_idc / constraint_setN_flag / reserved_zero_2bits / level_idc.
         let profile_idc = r.u(8)? as u8;

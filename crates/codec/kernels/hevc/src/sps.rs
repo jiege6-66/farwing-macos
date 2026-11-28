@@ -534,6 +534,18 @@ impl SeqParameterSet {
         Self::parse_inner(&mut br, rbsp)
     }
 
+    pub fn parse_complete(rbsp: &[u8]) -> Result<Self, SpsError> {
+        let mut br = BitReader::new(rbsp);
+        let sps = Self::parse_inner(&mut br, rbsp)?;
+        if !br.has_rbsp_end(sps.opaque_tail.is_some()) {
+            return Err(SpsError::ValueOutOfRange {
+                field: "rbsp_trailing_bits",
+                got: 0,
+            });
+        }
+        Ok(sps)
+    }
+
     pub fn materialize_short_term_ref_pic_sets(
         &self,
     ) -> Result<Vec<MaterializedShortTermRefPicSet>, ShortTermRefPicSetMaterializeError> {

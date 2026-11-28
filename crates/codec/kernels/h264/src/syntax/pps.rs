@@ -95,6 +95,14 @@ impl Pps {
     }
 
     pub fn parse_with_chroma_format(rbsp: &[u8], chroma_format_idc: u32) -> Result<Self, PpsError> {
+        Self::parse_inner(rbsp, chroma_format_idc, false)
+    }
+
+    pub fn parse_complete(rbsp: &[u8], chroma_format_idc: u32) -> Result<Self, PpsError> {
+        Self::parse_inner(rbsp, chroma_format_idc, true)
+    }
+
+    fn parse_inner(rbsp: &[u8], chroma_format_idc: u32, complete: bool) -> Result<Self, PpsError> {
         let mut r = BitReader::new(rbsp);
 
         // §7.4.2.2 — pic_parameter_set_id ue(v), 0..=255.
@@ -254,9 +262,9 @@ impl Pps {
                     second_chroma_qp_index_offset,
                 ));
             }
-            // §7.3.2.2 closes with rbsp_trailing_bits(); be lenient:
-            // extra padding bytes are common, so ignore errors.
-            let _ = r.rbsp_trailing_bits();
+            if !complete {
+                let _ = r.rbsp_trailing_bits(); // Preserve the lenient parser's behavior.
+            }
             Some(PpsExtension {
                 transform_8x8_mode_flag,
                 pic_scaling_matrix_present_flag,
@@ -272,6 +280,12 @@ impl Pps {
             None
         };
 
+        if complete {
+            r.rbsp_trailing_bits()?;
+            if r.bits_remaining() != 0 {
+                return Err(BitError::BadTrailingBits.into());
+            }
+        }
         Ok(Pps {
             pic_parameter_set_id,
             seq_parameter_set_id,

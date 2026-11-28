@@ -845,6 +845,54 @@ impl TryFrom<u32> for FrameType {
     }
 }
 
+/// The reference-independent prefix of an uncompressed frame header (AV1 §5.9.2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameStart {
+    Existing {
+        slot: u8,
+    },
+    New {
+        frame_type: FrameType,
+        show_frame: bool,
+    },
+}
+
+impl FrameStart {
+    /// Inspect the prefix without parsing tiles or maintaining reference frames.
+    pub fn parse(obu: crate::bitstream::obu::Obu<'_>, reduced: bool) -> Result<Self, String> {
+        if !matches!(obu.kind, 3 | 6) || obu.payload.is_empty() {
+            return Err("missing AV1 frame header".into());
+        }
+        Self::read(&mut Reader::new(obu.payload).0, reduced, obu.kind == 6)
+    }
+
+    fn read(
+        r: &mut super::bitreader::BitReader<'_>,
+        reduced: bool,
+        frame_obu: bool,
+    ) -> Result<Self, String> {
+        if reduced {
+            return Ok(Self::New {
+                frame_type: FrameType::KeyFrame,
+                show_frame: true,
+            });
+        }
+        if r.read_bit()? {
+            if frame_obu {
+                return Err("If obu_type is equal to OBU_FRAME, it is a requirement of bitstream conformance that show_existing_frame is equal to 0.".into());
+            }
+            Ok(Self::Existing {
+                slot: r.read_bits(3)?,
+            })
+        } else {
+            Ok(Self::New {
+                frame_type: FrameType::try_from(r.read_bits::<u32>(2)?)?,
+                show_frame: r.read_bit()?,
+            })
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TxMode {
     #[default]
@@ -3098,6 +3146,11 @@ impl Parser {
 
         const ALL_FRAMES: u32 = (1 << NUM_REF_FRAMES) - 1;
 
+        let start = FrameStart::read(
+            &mut r.0,
+            reduced_still_picture_header,
+            matches!(obu.header.obu_type, ObuType::Frame),
+        )?;
         if reduced_still_picture_header {
             fh.show_existing_frame = false;
             fh.frame_type = FrameType::KeyFrame;
@@ -3105,12 +3158,9 @@ impl Parser {
             fh.show_frame = true;
             fh.showable_frame = false;
         } else {
-            fh.show_existing_frame = r.0.read_bit()?;
-            if matches!(obu.header.obu_type, ObuType::Frame) && fh.show_existing_frame {
-                return Err("If obu_type is equal to OBU_FRAME, it is a requirement of bitstream conformance that show_existing_frame is equal to 0.".into());
-            }
-            if fh.show_existing_frame {
-                fh.frame_to_show_map_idx = r.0.read_bits::<u32>(3)? as u8;
+            fh.show_existing_frame = matches!(start, FrameStart::Existing { .. });
+            if let FrameStart::Existing { slot } = start {
+                fh.frame_to_show_map_idx = slot;
 
                 if decoder_model_info_present_flag && !equal_picture_interval {
                     fh.frame_presentation_time =
@@ -3175,13 +3225,19 @@ impl Parser {
                 return Ok(fh);
             }
 
-            fh.frame_type = FrameType::try_from(r.0.read_bits::<u32>(2)?)?;
+            let FrameStart::New {
+                frame_type,
+                show_frame,
+            } = start
+            else {
+                unreachable!("show_existing_frame was handled above");
+            };
+            fh.frame_type = frame_type;
             fh.frame_is_intra = matches!(
                 fh.frame_type,
                 FrameType::IntraOnlyFrame | FrameType::KeyFrame
             );
-
-            fh.show_frame = r.0.read_bit()?;
+            fh.show_frame = show_frame;
 
             if fh.show_frame && decoder_model_info_present_flag && equal_picture_interval {
                 fh.frame_presentation_time =
