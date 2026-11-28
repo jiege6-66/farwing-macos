@@ -2,6 +2,7 @@
 
 use std::{
     ffi::c_void,
+    panic::{AssertUnwindSafe, catch_unwind},
     ptr::{self, NonNull},
     sync::{Arc, Mutex},
 };
@@ -72,6 +73,9 @@ impl Hardware {
     pub(super) fn push(&mut self, data: &[u8], token: i64) -> Output {
         let result = self.decode(data, token);
         if result.is_err() && !self.need_keyframe {
+            // decode drains any failed submit before clearing its active slot.
+            // If the wait itself failed, invalidating here still prevents a
+            // late callback from matching a reused stack cookie on this session.
             self.reset();
         }
         result
@@ -104,7 +108,8 @@ impl Hardware {
             .as_ref()
             .is_none_or(|old| old.configuration != *config)
         {
-            let (description, pixel) = prepare_format(config, false)?;
+            let opening = self.installed.is_none();
+            let (description, pixel) = prepare_format(config, opening)?;
             if let Some(old) = self
                 .installed
                 .as_mut()
@@ -117,7 +122,7 @@ impl Hardware {
                     return Err(DecodeError::NeedKeyframe);
                 }
                 self.installed = None;
-                self.installed = Some(Installed::create(config, description, pixel, false)?);
+                self.installed = Some(Installed::create(config, description, pixel, opening)?);
                 tracing::debug!(
                     in_band_change = sample.configuration_changed,
                     "installed VideoToolbox decoder session"
@@ -193,7 +198,7 @@ fn prepare_format(
     })?;
     let description = format::description(config).map_err(|status| {
         tracing::debug!(status, "CoreMedia rejected the video format description");
-        if status == kCMFormatDescriptionError_AllocationFailed || status == 0 {
+        if status == kCMFormatDescriptionError_AllocationFailed {
             DecodeError::HardwareFailure
         } else if opening {
             DecodeError::Unsupported
@@ -214,6 +219,8 @@ type Output = Result<Option<GpuFrame>, DecodeError>;
 struct Callback {
     pixel: PixelFormat,
     active: Mutex<Option<Submission>>,
+    #[cfg(test)]
+    panic_on_output: bool,
 }
 
 struct Submission {
@@ -247,6 +254,8 @@ impl Session {
         let callback = Arc::new(Callback {
             pixel,
             active: Mutex::new(None),
+            #[cfg(test)]
+            panic_on_output: false,
         });
         let record = VTDecompressionOutputCallbackRecord {
             decompressionOutputCallback: Some(output_callback),
@@ -362,20 +371,26 @@ impl Session {
             .map_err(|_| DecodeError::HardwareFailure)?;
         let dropped = info.contains(VTDecodeInfoFlags::FrameDropped);
         let mut completion = status;
-        if status == 0
+        let delayed = status == 0
             && (info.contains(VTDecodeInfoFlags::Asynchronous)
-                || (!dropped && active.as_ref().is_some_and(|entry| entry.output.is_none())))
-        {
+                || (!dropped && active.as_ref().is_some_and(|entry| entry.output.is_none())));
+        if status != 0 || delayed {
             drop(active); // The callback must not contend with a held lock during the wait.
-            tracing::warn!(
-                token,
-                ?info,
-                "VideoToolbox did not complete synchronous decode inline"
-            );
-            #[cfg(test)]
-            eprintln!("VT delayed callback for token {token}; draining before return");
-            // SAFETY: The session and refcons remain live. This also finishes delayed frames.
-            completion = unsafe { self.session.wait_for_asynchronous_frames() };
+            if delayed {
+                tracing::warn!(
+                    token,
+                    ?info,
+                    "VideoToolbox did not complete synchronous decode inline"
+                );
+                #[cfg(test)]
+                eprintln!("VT delayed callback for token {token}; draining before return");
+            }
+            // SAFETY: The session and refcons remain live, including for a failed submit.
+            // The wait also finishes delayed frames. Preserve the original submit error.
+            let wait_status = unsafe { self.session.wait_for_asynchronous_frames() };
+            if status == 0 {
+                completion = wait_status;
+            }
             active = self
                 .callback
                 .active
@@ -443,18 +458,41 @@ unsafe extern "C-unwind" fn output_callback(
     else {
         return;
     };
-    entry.output = Some(if status != 0 {
-        Err(decode_status(status))
-    } else if flags.contains(VTDecodeInfoFlags::FrameDropped) || image.is_null() {
-        Ok(None)
-    } else {
-        // SAFETY: A non-null image from the callback is live through this call.
-        frame_from_callback(
-            unsafe { CFRetained::retain(NonNull::new_unchecked(image)) },
-            callback.pixel,
-            entry,
-        )
-    });
+    // Keep the guard outside the unwind boundary so callback work cannot poison it.
+    let output = catch_unwind(AssertUnwindSafe(|| {
+        #[cfg(test)]
+        assert!(!callback.panic_on_output, "injected VT callback panic");
+        if status != 0 {
+            Err(decode_status(status))
+        } else if flags.contains(VTDecodeInfoFlags::FrameDropped) || image.is_null() {
+            Ok(None)
+        } else {
+            // SAFETY: A non-null image from the callback is live through this call.
+            frame_from_callback(
+                unsafe { CFRetained::retain(NonNull::new_unchecked(image)) },
+                callback.pixel,
+                entry,
+            )
+        }
+    }));
+    match output {
+        Ok(output) => entry.output = Some(output),
+        Err(payload) => {
+            let token = entry.token;
+            entry.output = Some(Err(DecodeError::HardwareFailure));
+            drop(active);
+            // Even recovery must not unwind across VT: logging and disposing
+            // of an arbitrary Rust panic payload can themselves panic.
+            if let Err(payload) =
+                catch_unwind(|| tracing::error!(token, "VideoToolbox output callback panicked"))
+            {
+                std::mem::forget(payload);
+            }
+            if let Err(payload) = catch_unwind(AssertUnwindSafe(|| drop(payload))) {
+                std::mem::forget(payload);
+            }
+        }
+    }
 }
 
 fn frame_from_callback(
@@ -523,6 +561,48 @@ fn hevc_rasl_is_only_skipped_at_random_access() {
     assert!(leading.discard(Some(9)));
     leading.observe(Some(19), false);
     assert!(!leading.discard(Some(8)));
+}
+
+#[test]
+fn vt_callback_panic_is_contained_and_fails_the_submission() {
+    let token = 7i64;
+    let source = ptr::from_ref(&token).cast_mut().cast::<c_void>();
+    let codec = crate::media::VideoCodec::H264;
+    let data = crate::media::decoder::fixtures::sample(codec, 1, 8, (1280, 720)).unwrap();
+    let signature = crate::media::video_format::parse_stream_format(codec, data).unwrap();
+    let callback = Callback {
+        pixel: PixelFormat {
+            fourcc: u32::from_be_bytes(*b"420v"),
+            bytes_per_sample: 1,
+        },
+        active: Mutex::new(Some(Submission {
+            source_addr: source.addr(),
+            token,
+            signature,
+            output: None,
+        })),
+        panic_on_output: true,
+    };
+    // SAFETY: Invoke the Rust callback directly with its actual refcon/cookie
+    // and a null image, without involving a VT C frame if the test fails.
+    let unwind = catch_unwind(AssertUnwindSafe(|| unsafe {
+        let time = objc2_core_media::kCMTimeInvalid;
+        output_callback(
+            ptr::from_ref(&callback).cast_mut().cast(),
+            source,
+            0,
+            VTDecodeInfoFlags::FrameDropped,
+            ptr::null_mut(),
+            time,
+            time,
+        );
+    }));
+    assert!(unwind.is_ok(), "panic escaped the VT callback");
+    let active = callback.active.lock().expect("callback poisoned the mutex");
+    assert!(matches!(
+        active.as_ref().unwrap().output,
+        Some(Err(DecodeError::HardwareFailure))
+    ));
 }
 
 #[test]

@@ -7,7 +7,7 @@ use objc2_core_media::{
     CMBlockBuffer, CMFormatDescription, CMSampleBuffer, CMVideoFormatDescription,
     CMVideoFormatDescriptionCreate, CMVideoFormatDescriptionCreateFromH264ParameterSets,
     CMVideoFormatDescriptionCreateFromHEVCParameterSets, kCMBlockBufferAssureMemoryNowFlag,
-    kCMFormatDescriptionExtension_FullRangeVideo,
+    kCMFormatDescriptionError_AllocationFailed, kCMFormatDescriptionExtension_FullRangeVideo,
     kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms, kCMVideoCodecType_AV1,
 };
 use objc2_core_video::*;
@@ -67,6 +67,8 @@ pub(super) fn description(
             }
             let pointers = NonNull::from_mut(&mut pointers).cast();
             let sizes = NonNull::from_mut(&mut sizes).cast();
+            // Unlike the generic AV1 constructor below, the parameter-set APIs
+            // derive FullRangeVideo from SPS VUI; no override is needed.
             // SAFETY: The arrays have nals.len() initialized entries pointing to
             // live parameter NALs, and out is writable. CM copies the parameters.
             unsafe {
@@ -134,7 +136,7 @@ pub(super) fn description(
     // SAFETY: A successful Create returns a +1 format description.
     NonNull::new(out.cast_mut())
         .map(|out| unsafe { CFRetained::from_raw(out) })
-        .ok_or(status)
+        .ok_or(kCMFormatDescriptionError_AllocationFailed)
 }
 
 pub(super) fn sample_buffer(

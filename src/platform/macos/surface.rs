@@ -28,6 +28,7 @@ enum Storage {
         height: u32,
         stride: usize,
         bytes_per_sample: usize,
+        format: CpuFormat,
     },
 }
 
@@ -83,15 +84,16 @@ impl SurfaceWriter {
             height,
             stride,
             bytes_per_sample: bps,
+            format,
         }))
     }
 }
 
 impl Surface {
     pub(crate) fn luma_hash(&self, w: u32, h: u32) -> Result<u64> {
-        // As on Windows, hash the native bytes, one write per visible row.
-        // VT's 4:4:4 is biplanar too (1/2 bytes per Y sample); packed CPU
-        // AYUV/Y410 use the whole 4-byte pixel, like their DXGI counterparts.
+        // Hash luma once per visible row, with the same sample layout for Mac
+        // hardware and software. 4:2:0 matches Windows byte-for-byte, but
+        // 4:4:4 is not comparable: Windows hashes the packed pixel bytes.
         let mut hasher = DefaultHasher::new();
         match &self.0 {
             Storage::PixelBuffer(frame) => {
@@ -113,15 +115,38 @@ impl Surface {
                 height,
                 stride,
                 bytes_per_sample,
+                format,
             } => {
                 ensure!(
                     w <= *width && h <= *height,
                     "hash area outside the visible frame"
                 );
+                let mut luma = Vec::new();
                 let bytes = w as usize * bytes_per_sample;
                 for row in 0..h as usize {
                     let start = row * stride;
-                    hasher.write(&data[start..start + bytes]);
+                    let pixels = &data[start..start + bytes];
+                    let luma_row = match format {
+                        CpuFormat::Nv12 | CpuFormat::P010 => pixels,
+                        CpuFormat::Ayuv => {
+                            // farwing_codec stores V, U, Y, A bytes.
+                            luma.clear();
+                            luma.extend(pixels.chunks_exact(4).map(|p| p[2]));
+                            &luma
+                        }
+                        CpuFormat::Y410 => {
+                            // U:Y:V:A from least to most significant bits. x444
+                            // (like x420/P010) stores Y in the upper 10 bits of LE u16.
+                            luma.clear();
+                            luma.extend(pixels.chunks_exact(4).flat_map(|p| {
+                                let packed = u32::from_le_bytes(p.try_into().unwrap());
+                                let y = ((packed >> 10) & 0x3ff) as u16;
+                                (y << 6).to_le_bytes()
+                            }));
+                            &luma
+                        }
+                    };
+                    hasher.write(luma_row);
                 }
             }
         }
@@ -211,6 +236,23 @@ pub(super) fn test_pixels<const N: usize>(
     Ok(pixels)
 }
 
+#[cfg(test)]
+pub(super) fn test_luma_words<const N: usize>(
+    frame: &GpuFrame,
+    points: [(u32, u32); N],
+) -> Result<[u16; N]> {
+    assert_eq!(frame.bytes_per_sample, 2);
+    let lock = ReadLock::new(&frame.pixel_buffer)?;
+    let (left, top) = frame.visible_origin;
+    let mut words = [0; N];
+    for ((x, y), word) in points.into_iter().zip(&mut words) {
+        let x = (left + x) as usize;
+        let bytes = lock.row(0, (top + y) as usize, x..x + 1, 2)?;
+        *word = u16::from_le_bytes(bytes.try_into().unwrap());
+    }
+    Ok(words)
+}
+
 #[test]
 fn cpu_hash_respects_visible_rows_and_ignores_nv12_chroma() {
     fn send<T: Send>() {}
@@ -234,4 +276,32 @@ fn cpu_hash_respects_visible_rows_and_ignores_nv12_chroma() {
     assert!(surface.luma_hash(3, 2).is_err());
     frame.data = Bytes::new();
     assert!(writer.upload_cpu(&frame).is_err());
+}
+
+#[test]
+fn y410_hash_uses_only_msb_aligned_luma_in_visible_rows() {
+    let pixel = |u: u32, y: u32, v: u32, a: u32| (u | y << 10 | v << 20 | a << 30).to_le_bytes();
+    let data = [
+        pixel(1023, 1, 300, 3),
+        pixel(0, 0x155, 1, 1),
+        pixel(0, 9, 0, 0),
+        pixel(1, 0x2aa, 1023, 0),
+        pixel(70, 0x3ff, 90, 2),
+        pixel(0, 7, 0, 0),
+    ]
+    .concat();
+    let frame = CpuFrame {
+        pts: 0,
+        width: 2,
+        height: 2,
+        coded_width: 3,
+        coded_height: 2,
+        format: CpuFormat::Y410,
+        data: data.into(),
+    };
+    let mut expected = DefaultHasher::new();
+    expected.write(&[0x40, 0x00, 0x40, 0x55]);
+    expected.write(&[0x80, 0xaa, 0xc0, 0xff]);
+    let surface = SurfaceWriter::new().unwrap().upload_cpu(&frame).unwrap();
+    assert_eq!(surface.luma_hash(2, 2).unwrap(), expected.finish());
 }

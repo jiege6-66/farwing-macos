@@ -96,8 +96,9 @@ fn vt_fixture_matrix() {
                     let mut lazy =
                         PlatformVideoDecoder::open(&config(codec, size, DecoderMode::Hardware))
                             .unwrap();
-                    assert_eq!(lazy.push_packet(&au, 0), Err(DecodeError::HardwareFailure));
+                    let result = lazy.push_packet(&au, 0);
                     assert!(terminal(&mut lazy, 0).is_none());
+                    assert_eq!(result, Err(DecodeError::Unsupported));
                     continue;
                 }
                 Err(error) => {
@@ -175,8 +176,18 @@ fn vt_fixture_matrix() {
 #[test]
 #[ignore = "requires VideoToolbox hardware"]
 fn h264_hardware_software_luma_match() {
+    check_h264_luma_match(1, *b"420v", CpuFormat::Nv12);
+}
+
+#[test]
+#[ignore = "requires VideoToolbox hardware with H.264 4:4:4 support"]
+fn h264_444_hardware_software_luma_match() {
+    check_h264_luma_match(3, *b"444v", CpuFormat::Ayuv);
+}
+
+fn check_h264_luma_match(chroma: u8, fourcc: [u8; 4], cpu_format: CpuFormat) {
     let size = (1920, 1080);
-    let au = fixture(VideoCodec::H264, 1, 8, size);
+    let au = fixture(VideoCodec::H264, chroma, 8, size);
     let writer = SurfaceWriter::new().unwrap();
     let mut hashes = Vec::new();
     for mode in [DecoderMode::Hardware, DecoderMode::Software] {
@@ -186,15 +197,19 @@ fn h264_hardware_software_luma_match() {
         let surface = match terminal(&mut decoder, i64::MIN).unwrap() {
             PlatformDecodedFrame::Gpu(frame) if mode == DecoderMode::Hardware => {
                 assert_eq!((frame.width(), frame.height()), size);
-                assert_eq!(frame.pixel_format().to_be_bytes(), *b"420v");
+                assert_eq!(frame.pixel_format().to_be_bytes(), fourcc);
                 writer.wrap_decoded_surface(frame)
             }
             PlatformDecodedFrame::Cpu(frame) if mode == DecoderMode::Software => {
                 assert_eq!(
                     (frame.width, frame.height, frame.format),
-                    (size.0, size.1, CpuFormat::Nv12)
+                    (size.0, size.1, cpu_format)
                 );
-                assert_eq!(&frame.data[..8], &[64; 8]);
+                match cpu_format {
+                    CpuFormat::Nv12 => assert_eq!(&frame.data[..8], &[64; 8]),
+                    CpuFormat::Ayuv => assert_eq!(&frame.data[..4], &[160, 96, 64, 255]),
+                    _ => unreachable!(),
+                }
                 writer.upload_cpu(&frame)
             }
             _ => panic!("unexpected backend for {mode:?}"),
@@ -204,10 +219,37 @@ fn h264_hardware_software_luma_match() {
         let hash = std::thread::spawn(move || surface.luma_hash(size.0, size.1).unwrap())
             .join()
             .unwrap();
-        eprintln!("H.264 {mode:?} luma_hash={hash:016x}");
+        eprintln!("H.264 chroma={chroma} {mode:?} luma_hash={hash:016x}");
         hashes.push(hash);
     }
     assert_eq!(hashes[0], hashes[1]);
+}
+
+#[test]
+#[ignore = "requires VideoToolbox hardware"]
+fn vt_10_bit_luma_is_msb_aligned() {
+    let size = (1280, 720);
+    // FFmpeg software decode of both fixtures gives 255, 769 here; the
+    // low two bits are nonzero, so this also distinguishes 8-bit expansion.
+    let points = [(318, 179), (331, 180)];
+    for (chroma, fourcc) in [(1, *b"x420"), (3, *b"x444")] {
+        let mut decoder =
+            PlatformVideoDecoder::open(&config(VideoCodec::H265, size, DecoderMode::Hardware))
+                .unwrap();
+        decoder
+            .push_packet(&fixture(VideoCodec::H265, chroma, 10, size), 0)
+            .unwrap();
+        let Some(PlatformDecodedFrame::Gpu(frame)) = terminal(&mut decoder, 0) else {
+            panic!("no 10-bit GPU frame");
+        };
+        assert_eq!(frame.pixel_format().to_be_bytes(), fourcc);
+        let words = crate::platform::surface::test_luma_words(&frame, points).unwrap();
+        eprintln!(
+            "{} raw little-endian Y words: {words:04x?}",
+            std::str::from_utf8(&fourcc).unwrap()
+        );
+        assert_eq!(words, [255 << 6, 769 << 6]);
+    }
 }
 
 #[test]
