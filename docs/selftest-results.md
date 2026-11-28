@@ -2039,7 +2039,7 @@ Mac 上新增的三项测试（`platform::macos::locks` 的两项、`platform::m
 
 ## macOS 主控：M2 §3.2 空能力集合之后的检查（2026-11-28）
 
-**结果：Mac 上服务端测试与单文件测试通过；本机 macOS 检查 237 → 236 个错误（`--tests` 239 → 237），没有新增报错位置。Windows 构建与库测试尚未运行（需推送到 fork 触发 CI）。** 对照 `4f648ef`。
+**结果：Windows 回归通过；Mac 上服务端测试与单文件测试通过；本机与 CI 的 macOS 检查均为 237 → 236 个错误（本机 `--tests` 239 → 237），没有新增报错位置。** 测试提交 `39ccdb3`（代码 `b53daab`），对照 `4f648ef`。
 
 - `src/account/feature_ability.rs`：`host_capabilities()` 是 Windows 被控注册的集合，`local_capabilities()` 在 Windows 上等于它、其他平台为空；`FeaturePolicy::direct()` 改用 `host_capabilities()`，Mac 直连 Windows 被控时不再丢掉 `host` 与 `files`。Windows 上两者结果不变。
 - `src/protocol/peer.rs`：被控 HELLO 的 `touch`/`pen` 判断经 `synthetic_pointers_available()`，Windows 以外为假；原 `peer.rs:282` 与测试中 `:447` 的两处报错消失。
@@ -2052,5 +2052,7 @@ Mac 上新增的三项测试（`platform::macos::locks` 的两项、`platform::m
 | 本机 `cargo check --locked --target aarch64-apple-darwin`（Rust 1.95.0） | 237 → 236 个错误，消失的只有 `src/protocol/peer.rs:282`；仍只有 1 个既有 warning |
 | 本机同上加 `--tests` | 239 → 237 个错误，消失的是 `peer.rs:282` 与 `:447`；无新增位置 |
 | 本机整库 `--target x86_64-pc-windows-msvc` 检查 | 无法进行：`ring` 的 C 代码需要 MSVC 头文件 |
+| fork CI `windows-check.yml`（`windows-2025`，[46109252602](https://github.com/jiege6-66/farwing-macos/actions/runs/46109252602)） | `cargo build --release --locked` 成功，构建无 warning；`cargo fast-test --locked --lib` 291 项中 289 项通过、0 项失败、2 项 ignored。新增的 `direct_policy_describes_a_windows_host`、`windows_registers_the_host_capabilities` 通过，`hello_round_trip` 与 `capability_policy` 仍通过 |
+| fork CI `macos-check.yml`（`macos-15` arm64，[46109252713](https://github.com/jiege6-66/farwing-macos/actions/runs/46109252713)） | 按预期失败，236 个错误、1 个 warning，232 个报错主位置与本机完全一致 |
 
 `peer.rs` 新增的非 Windows 测试要等库能编译后才能运行。Windows 主控界面里这台 Mac 的显示与可操作性（简报 §3.2 末段）未实测，属于 M2 验收内容。

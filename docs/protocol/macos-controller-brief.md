@@ -516,5 +516,5 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 |---|---|
 | M0 | 包装脚本、测试和开发分支 CI 已配置；本机 Apple Development 签名、严格验签、标识符和证书核对通过。开发机已有 Xcode 命令行工具，Rust 1.95.0 装在仓库外的隔离目录；未实际运行 GitHub workflow，权限判别待验（§8.3）。 |
 | M1 | §1.1–§1.2 构建层、§2.3 共享项迁移及 §1.3 命令取舍已完成。剪贴板、文件传输、拖放、插件、语音与通话、Windows 观看窗口及输入、设备中心和启动器均按平台编入；Mac 不声明 `touch`、`pen`，不请求 HDR。`cargo check` 仍停在 `farwing` 库，M1 结束时本机与 CI 均剩 265 个错误，Windows CI 构建与库测试通过（见 `docs/selftest-results.md`）。§2.1–§2.2 被控运行时拆分待与上游对齐。验收条件“Mac `cargo check` 通过”要等拆分及 M2–M4、M9 中对应的阻断清完。 |
-| M2 | 不依赖被控拆分的部分已完成：§3.3 数据与日志目录、§3.6 系统语言、§3.5 presence 与软件解码槽的 `flock`、§3.1 本机平台与硬件信息、命令行隐藏密码输入（`b356657`–`aa1517d`）。Windows CI 通过，Mac 检查 265 → 237，剩余分类见 `docs/selftest-results.md` 最后一节。§3.2 空能力集合与直连被控能力拆分已完成（Mac 检查 237 → 236，`--tests` 239 → 237）。待做：§3.4 凭据 vault 分支（与后台服务及上游 issue 的问题 4 相关）、Keychain 实测，以及验收所需的签名 `.app` 内命令行登录（要等库与 bin 能编译）。 |
+| M2 | 不依赖被控拆分的部分已完成：§3.3 数据与日志目录、§3.6 系统语言、§3.5 presence 与软件解码槽的 `flock`、§3.1 本机平台与硬件信息、命令行隐藏密码输入（`b356657`–`aa1517d`）。Windows CI 通过，Mac 检查 265 → 237，剩余分类见 `docs/selftest-results.md` 最后一节。§3.2 空能力集合与直连被控能力拆分已完成（`b53daab`；Mac 检查 237 → 236，`--tests` 239 → 237；Windows CI 构建与库测试通过）。待做：§3.4 凭据 vault 分支（与后台服务及上游 issue 的问题 4 相关）、Keychain 实测，以及验收所需的签名 `.app` 内命令行登录（要等库与 bin 能编译）。 |
 | M3–M9 | 未开始 |
