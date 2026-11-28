@@ -13,6 +13,7 @@ use anyhow::{Context, Result, bail, ensure};
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::OnceLock;
+#[cfg(windows)]
 use windows::core::PCWSTR;
 
 /// Brand and directory name (`%LOCALAPPDATA%\Farwing`, `Local\Farwing.*`).
@@ -274,10 +275,12 @@ pub fn instance_atom(suffix: &str) -> String {
 /// static CLASS: WideName = WideName::new(|| product::local_object("Example.v1"));
 /// unsafe { CreateMutexW(None, false, CLASS.pcwstr()) };
 /// ```
+#[cfg(windows)]
 pub struct WideName {
     make: fn() -> String,
     cell: OnceLock<Vec<u16>>,
 }
+#[cfg(windows)]
 impl WideName {
     pub const fn new(make: fn() -> String) -> Self {
         Self {
@@ -296,6 +299,7 @@ impl WideName {
 }
 
 /// Null-terminated UTF-16 copy of `text` for a single Win32 call.
+#[cfg(windows)]
 pub fn wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(Some(0)).collect()
 }

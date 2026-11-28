@@ -2,10 +2,12 @@
 //! Select the real backend here; no placeholder implementations for future OSes.
 #[cfg(target_os = "macos")]
 pub(crate) mod macos;
+#[cfg(target_os = "macos")]
+pub(crate) use macos::locks;
 #[cfg(windows)]
 pub(crate) mod windows;
 #[cfg(windows)]
 pub(crate) use windows::{
-    camera, capture, decoder, display, display_hdr, encoder, graphics, source, surface, swapchain,
-    transfer, video_shader,
+    camera, capture, decoder, display, display_hdr, encoder, graphics, locks, source, surface,
+    swapchain, transfer, video_shader,
 };

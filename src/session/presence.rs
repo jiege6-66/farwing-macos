@@ -6,6 +6,7 @@
 use super::host_client::HostClient;
 use crate::account::api::ApiFailure;
 use crate::account::device_change::{ChangeKind, DeviceChange};
+use crate::platform::locks::Reservation;
 use crate::transport::signal::{
     SignalFailure, SignalPushHandler, SignalRole, SignalSession, SocketState,
 };
@@ -117,12 +118,6 @@ impl ActivePresence {
     }
 }
 
-// This mutex is never acquired: its HANDLE only reserves the object name.
-struct Reservation {
-    _handle: crate::platform::windows::host_service::pipe::Handle,
-}
-unsafe impl Send for Reservation {}
-
 async fn run_presence(
     client: HostClient,
     events: Sender<PresenceEvent>,
@@ -137,27 +132,9 @@ async fn run_presence(
     // During installation the new background waits for the portable room's
     // normal close; two account owners must never kick each other off the server.
     let _owner = loop {
-        use windows::{
-            Win32::{
-                Foundation::{ERROR_ALREADY_EXISTS, GetLastError},
-                System::Threading::CreateMutexW,
-            },
-            core::PCWSTR,
-        };
-        let name: Vec<u16> =
-            crate::product::global_object(&format!("Presence.{}", client.presence_key()))
-            .encode_utf16()
-            .chain(Some(0))
-            .collect();
-        let handle = Reservation {
-            _handle: crate::platform::windows::host_service::pipe::Handle(unsafe {
-                CreateMutexW(None, false, PCWSTR(name.as_ptr()))?
-            }),
-        };
-        if unsafe { GetLastError() } != ERROR_ALREADY_EXISTS {
-            break handle;
+        if let Some(reservation) = Reservation::try_acquire(&client.presence_key())? {
+            break reservation;
         }
-        drop(handle);
         tokio::select! { _ = task_cancel.cancelled() => return Ok(()), _ = tokio::time::sleep(Duration::from_millis(100)) => () }
     };
     let _assistance = crate::features::host::assist::Running::start(client.clone());

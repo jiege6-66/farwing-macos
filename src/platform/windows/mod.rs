@@ -24,6 +24,7 @@ pub(crate) mod host_lifecycle;
 pub(crate) mod host_service;
 pub(crate) mod input;
 pub(crate) mod locale;
+pub(crate) mod locks;
 pub(crate) mod logging;
 pub(crate) mod loopback;
 pub(crate) mod notifications;
