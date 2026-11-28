@@ -47,6 +47,40 @@ pub(crate) fn sample(
     }
 }
 
+/// Probe points in visible coordinates, in diagnostic order (center at index 2).
+pub(crate) fn pattern_points((w, h): (u32, u32)) -> [(u32, u32); 5] {
+    [
+        (w / 8, h / 8),
+        (w * 7 / 8, h / 8),
+        (w / 2, h / 2),
+        (w / 8, h * 7 / 8),
+        (w * 7 / 8, h * 7 / 8),
+    ]
+}
+
+// Expected YUV values in the fixtures' 8-bit-normalized sample domain.
+pub(crate) fn avc_hevc_yuv(index: usize) -> [u16; 3] {
+    [if index == 2 { 192 } else { 64 }, 96, 160]
+}
+
+pub(crate) fn av1_444_yuv((w, h): (u32, u32), (x, y): (u32, u32), index: usize) -> [u16; 3] {
+    [
+        if index == 2 { 181 } else { 71 },
+        if x < w / 2 { 80 } else { 176 },
+        if y < h / 2 { 96 } else { 160 },
+    ]
+}
+
+pub(crate) fn av1_420_yuv(depth: u8, index: usize) -> [u16; 3] {
+    let y = match (depth, index == 2) {
+        (8, false) => 71,
+        (8, true) => 181,
+        (_, false) => 91,
+        (_, true) => 117,
+    };
+    [y, 128, 128]
+}
+
 /// Take the first picture (including its parameter sets and slices) when an
 /// Annex-B fixture has multiple access units. AV1 fixtures are returned as-is.
 pub(crate) fn first_picture(codec: VideoCodec, data: &[u8]) -> Vec<u8> {

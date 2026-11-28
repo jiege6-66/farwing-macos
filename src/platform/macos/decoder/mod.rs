@@ -159,12 +159,21 @@ impl PlatformVideoDecoder {
     }
 
     pub(crate) fn push_packet(&mut self, data: &[u8], token: i64) -> Result<(), DecodeError> {
+        self.push_packet_with_detail(data, token)
+            .map_err(Into::into)
+    }
+
+    fn push_packet_with_detail(
+        &mut self,
+        data: &[u8],
+        token: i64,
+    ) -> Result<(), vt::HardwareError> {
         self.check_cancelled()?;
         let output = match &mut self.backend {
             Backend::Hardware(decoder) => decoder
                 .push(data, token)
                 .map(|frame| frame.map(PlatformDecodedFrame::Gpu)),
-            Backend::Software(decoder) => software_push(decoder, data, token),
+            Backend::Software(decoder) => software_push(decoder, data, token).map_err(Into::into),
         };
         self.check_cancelled()?;
         match output {

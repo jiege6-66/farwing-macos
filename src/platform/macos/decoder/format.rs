@@ -26,11 +26,15 @@ impl PixelFormat {
         if format.bit_depth_luma != format.bit_depth_chroma {
             return None;
         }
-        let fourcc = match (
+        Self::for_format(
             format.chroma_format_idc,
             format.bit_depth_luma,
             config.full_range(),
-        ) {
+        )
+    }
+
+    pub(super) fn for_format(chroma: u8, depth: u8, full_range: bool) -> Option<Self> {
+        let fourcc = match (chroma, depth, full_range) {
             (1, 8, false) => kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
             (1, 8, true) => kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
             (1, 10, false) => kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,
@@ -43,7 +47,7 @@ impl PixelFormat {
         };
         Some(Self {
             fourcc,
-            bytes_per_sample: usize::from(format.bit_depth_luma).div_ceil(8),
+            bytes_per_sample: usize::from(depth).div_ceil(8),
         })
     }
 }

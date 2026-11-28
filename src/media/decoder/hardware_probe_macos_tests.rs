@@ -19,6 +19,8 @@ fn vt_hardware_probe_matrix() {
     let size = (1280, 720);
     let avc = fixtures::sample(H264, 1, 8, size).unwrap();
     let base = parse_stream_format(H264, avc).unwrap();
+    // This test must be the first writer of the process-wide bitset. Run the
+    // matrix alone or the harness with --test-threads=1; other tests don't probe.
     assert!(!PlatformVideoDecoder::supports_hardware_format(H264, base));
 
     let start = Instant::now();

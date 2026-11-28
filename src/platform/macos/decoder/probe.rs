@@ -1,8 +1,11 @@
 //! Real-picture hardware probing and the decode thread's format lookup.
 
-use std::sync::atomic::{AtomicU16, Ordering::Relaxed};
+use std::sync::atomic::{
+    AtomicU16,
+    Ordering::{Acquire, Release},
+};
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use objc2_core_media::{kCMVideoCodecType_AV1, kCMVideoCodecType_H264, kCMVideoCodecType_HEVC};
 use objc2_core_video::CVPixelBufferGetIOSurface;
 use objc2_video_toolbox::VTIsHardwareDecodeSupported;
@@ -12,14 +15,114 @@ use crate::platform::surface::sample_pixels;
 
 use super::{
     DecoderMode, GpuFrame, PlatformDecodedFrame, PlatformVideoDecoder, VideoCodec,
-    VideoDecoderConfig, VideoFormatSignature,
+    VideoDecoderConfig, VideoFormatSignature, format::PixelFormat, vt::HardwareError,
 };
 
-// Publish only successes; probe_format always tries the requested size. An empty
-// inventory can retry, and format lookup never waits or launches its own probe.
+#[derive(Debug, thiserror::Error)]
+enum ProbeError {
+    #[error("codec has no hardware decoder")]
+    NoHardware,
+    #[error("no fixture for this format and size")]
+    MissingFixture,
+    #[error("{operation}: {source}")]
+    Decoder {
+        operation: &'static str,
+        source: HardwareError,
+    },
+    #[error("first picture produced no GPU frame")]
+    MissingGpuFrame,
+    #[error("first picture produced more than one frame")]
+    ExtraFrame,
+    #[error("decoder dropped token {0}")]
+    Dropped(i64),
+    #[error("{0:#}")]
+    Validation(#[from] anyhow::Error),
+}
+
+impl ProbeError {
+    fn decoder(operation: &'static str, source: impl Into<HardwareError>) -> Self {
+        Self::Decoder {
+            operation,
+            source: source.into(),
+        }
+    }
+
+    fn level(&self) -> tracing::Level {
+        use tracing::Level;
+        match self {
+            Self::NoHardware | Self::MissingFixture => Level::DEBUG,
+            Self::Decoder { source, .. } if source.rejects_format() => Level::DEBUG,
+            _ => Level::WARN,
+        }
+    }
+}
+
+#[test]
+fn probe_failure_log_levels_distinguish_format_rejection_from_anomalies() {
+    use crate::media::decode_api::DecodeError;
+    use objc2_video_toolbox::{kVTVideoDecoderBadDataErr, kVTVideoDecoderUnsupportedDataFormatErr};
+    use tracing::Level;
+
+    let decoder = |source| ProbeError::Decoder {
+        operation: "submit first picture",
+        source,
+    };
+    let status = |operation, status, decode| {
+        decoder(HardwareError::VtStatus {
+            operation,
+            status,
+            decode,
+        })
+    };
+    for error in [
+        ProbeError::NoHardware,
+        ProbeError::MissingFixture,
+        decoder(DecodeError::Unsupported.into()),
+        // The same VT rejection has different recovery semantics at runtime.
+        status(
+            "session creation",
+            kVTVideoDecoderUnsupportedDataFormatErr,
+            DecodeError::HardwareFailure,
+        ),
+        status(
+            "decode",
+            kVTVideoDecoderUnsupportedDataFormatErr,
+            DecodeError::NeedKeyframe,
+        ),
+    ] {
+        assert_eq!(error.level(), Level::DEBUG, "{error}");
+    }
+    for error in [
+        decoder(DecodeError::HardwareFailure.into()),
+        decoder(DecodeError::NeedKeyframe.into()),
+        status(
+            "decode",
+            kVTVideoDecoderBadDataErr,
+            DecodeError::NeedKeyframe,
+        ),
+        decoder(HardwareError::InvalidOutput(
+            "GPU frame has no IOSurface".into(),
+        )),
+        ProbeError::MissingGpuFrame,
+        ProbeError::ExtraFrame,
+        ProbeError::Dropped(1),
+        ProbeError::Validation(anyhow::anyhow!("fixture pattern mismatch")),
+    ] {
+        assert_eq!(error.level(), Level::WARN, "{error}");
+    }
+}
+
+// Release publishes successful probe bits; acquire lets the decode thread read
+// them without waiting or re-probing. Before sending session.start, negotiation
+// joins the probe or takes the already populated inventory under its lock.
+// Never clear these bits: a failed retry can leave selection out of sync with
+// inventory until a successful probe or process restart. Runtime open/decode
+// errors still handle fallback.
 static VERIFIED_FORMATS: AtomicU16 = AtomicU16::new(0);
 
 fn format_bit(codec: VideoCodec, chroma: u8, depth: u8) -> Option<u16> {
+    // 3 codecs × 4 bits in u16. Check capacity and widen the bitset if more
+    // codecs are added beyond the 4 that fit.
     let codec = match codec {
         VideoCodec::H264 => 0,
         VideoCodec::H265 => 1,
@@ -41,7 +144,7 @@ fn format_bit(codec: VideoCodec, chroma: u8, depth: u8) -> Option<u16> {
 pub(super) fn supports_hardware_format(codec: VideoCodec, format: VideoFormatSignature) -> bool {
     format.bit_depth_luma == format.bit_depth_chroma
         && format_bit(codec, format.chroma_format_idc, format.bit_depth_luma)
-            .is_some_and(|bit| VERIFIED_FORMATS.load(Relaxed) & bit != 0)
+            .is_some_and(|bit| VERIFIED_FORMATS.load(Acquire) & bit != 0)
 }
 
 pub(super) fn probe_format(
@@ -53,12 +156,17 @@ pub(super) fn probe_format(
 ) -> bool {
     match verify_fixture(codec, (width, height), depth, chroma) {
         Ok(bit) => {
-            VERIFIED_FORMATS.fetch_or(bit, Relaxed);
+            VERIFIED_FORMATS.fetch_or(bit, Release);
             true
         }
         Err(error) => {
-            tracing::debug!(?codec, width, height, depth, chroma,
-                reason = %format_args!("{error:#}"), "VideoToolbox hardware probe failed");
+            if error.level() == tracing::Level::DEBUG {
+                tracing::debug!(?codec, width, height, depth, chroma,
+                    reason = %error, "VideoToolbox hardware probe failed");
+            } else {
+                tracing::warn!(?codec, width, height, depth, chroma,
+                    reason = %error, "VideoToolbox hardware probe failed");
+            }
             false
         }
     }
@@ -69,30 +177,25 @@ fn verify_fixture(
     (width, height): (u32, u32),
     depth: u8,
     chroma: u8,
-) -> Result<u16> {
+) -> Result<u16, ProbeError> {
     let codec_type = match codec {
         VideoCodec::H264 => kCMVideoCodecType_H264,
         VideoCodec::H265 => kCMVideoCodecType_HEVC,
         VideoCodec::Av1 => kCMVideoCodecType_AV1,
     };
     // SAFETY: This query takes only a CoreMedia codec identifier by value.
-    ensure!(
-        unsafe { VTIsHardwareDecodeSupported(codec_type) },
-        "codec has no hardware decoder"
-    );
+    if !unsafe { VTIsHardwareDecodeSupported(codec_type) } {
+        return Err(ProbeError::NoHardware);
+    }
     let sample = fixtures::sample(codec, chroma, depth, (width, height))
-        .context("no fixture for this format and size")?;
+        .ok_or(ProbeError::MissingFixture)?;
     let bit = format_bit(codec, chroma, depth).context("unsupported fixture format")?;
     let picture = fixtures::first_picture(codec, sample);
-    // Match the fixtures' range too: AV1 4:2:0 10-bit is full-range.
-    let expected = match (chroma, depth) {
-        (1, 8) => *b"420v",
-        (1, 10) if codec == VideoCodec::Av1 => *b"xf20",
-        (1, 10) => *b"x420",
-        (3, 8) => *b"444v",
-        (3, 10) => *b"x444",
-        _ => bail!("no pixel format for fixture"),
-    };
+    // The AV1 4:2:0 10-bit fixture alone is full-range. Keep this expectation
+    // independent of the decoder's range parser, but use its fourcc mapping.
+    let full_range = codec == VideoCodec::Av1 && chroma == 1 && depth == 10;
+    let expected = PixelFormat::for_format(chroma, depth, full_range)
+        .context("no pixel format for fixture")?;
 
     // Hardware uses RequireHardwareAcceleratedVideoDecoder, with no fallback.
     // The first AU supplies its own parameter sets/sequence header.
@@ -104,23 +207,40 @@ fn verify_fixture(
         gpu_device: None,
         extra_data: Default::default(),
     })
-    .context("open hardware decoder")?;
+    .map_err(|error| ProbeError::decoder("open hardware decoder", error))?;
     let token = 1;
     decoder
-        .push_packet(&picture, token)
-        .context("submit first picture")?;
-    let Some(PlatformDecodedFrame::Gpu(frame)) =
-        decoder.poll_owned_frame().context("poll first picture")?
+        .push_packet_with_detail(&picture, token)
+        .map_err(|error| ProbeError::decoder("submit first picture", error))?;
+    if let Some(dropped) = decoder.poll_dropped_token() {
+        return Err(ProbeError::Dropped(dropped));
+    }
+    let Some(PlatformDecodedFrame::Gpu(frame)) = decoder
+        .poll_owned_frame()
+        .map_err(|error| ProbeError::decoder("poll first picture", error))?
     else {
-        bail!("first picture produced no GPU frame");
+        return Err(ProbeError::MissingGpuFrame);
     };
+    if decoder
+        .poll_owned_frame()
+        .map_err(|error| ProbeError::decoder("poll remaining output", error))?
+        .is_some()
+    {
+        return Err(ProbeError::ExtraFrame);
+    }
+    check_frame(&frame, token, (width, height), expected.fourcc)?;
+    check_fixture_pattern(&frame, codec, chroma, depth)?;
+    Ok(bit)
+}
+
+fn check_frame(frame: &GpuFrame, token: i64, size: (u32, u32), fourcc: u32) -> Result<()> {
     ensure!(
         frame.pts() == token,
         "unexpected frame token {}",
         frame.pts()
     );
     ensure!(
-        (frame.width(), frame.height()) == (width, height),
+        (frame.width(), frame.height()) == size,
         "unexpected frame dimensions {}x{}",
         frame.width(),
         frame.height()
@@ -130,22 +250,14 @@ fn verify_fixture(
         "GPU frame has no IOSurface"
     );
     let actual = frame.pixel_format().to_be_bytes();
+    let expected = fourcc.to_be_bytes();
     ensure!(
         actual == expected,
         "unexpected pixel format {}, expected {}",
         String::from_utf8_lossy(&actual),
         String::from_utf8_lossy(&expected)
     );
-    ensure!(
-        decoder
-            .poll_owned_frame()
-            .context("poll remaining output")?
-            .is_none()
-            && decoder.poll_dropped_token().is_none(),
-        "expected exactly one frame and no dropped token"
-    );
-    check_fixture_pattern(&frame, codec, chroma, depth)?;
-    Ok(bit)
+    Ok(())
 }
 
 pub(super) fn check_fixture_pattern(
@@ -154,36 +266,17 @@ pub(super) fn check_fixture_pattern(
     chroma: u8,
     depth: u8,
 ) -> Result<()> {
-    let (w, h) = (frame.width(), frame.height());
-    let points = [
-        (w / 8, h / 8),
-        (w * 7 / 8, h / 8),
-        (w / 2, h / 2),
-        (w / 8, h * 7 / 8),
-        (w * 7 / 8, h * 7 / 8),
-    ];
+    let size = (frame.width(), frame.height());
+    let points = fixtures::pattern_points(size);
     let pixels = sample_pixels(frame, points)?;
     // Same fixture points, expected YUV values and tolerance as Windows diagnostics.
-    for (i, (actual, (x, y))) in pixels.into_iter().zip(points).enumerate() {
+    for (i, (actual, point)) in pixels.into_iter().zip(points).enumerate() {
         let expected = if codec != VideoCodec::Av1 {
-            [if i == 2 { 192 } else { 64 }, 96, 160]
+            fixtures::avc_hevc_yuv(i)
         } else if chroma == 3 {
-            [
-                if i == 2 { 181 } else { 71 },
-                if x < w / 2 { 80 } else { 176 },
-                if y < h / 2 { 96 } else { 160 },
-            ]
+            fixtures::av1_444_yuv(size, point, i)
         } else {
-            [
-                match (depth, i == 2) {
-                    (8, false) => 71,
-                    (8, true) => 181,
-                    (_, false) => 91,
-                    (_, true) => 117,
-                },
-                128,
-                128,
-            ]
+            fixtures::av1_420_yuv(depth, i)
         };
         ensure!(
             actual

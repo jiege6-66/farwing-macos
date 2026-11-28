@@ -274,13 +274,7 @@ fn decode_sample(
         None
     };
     let (w, h) = (signature.visible_width, signature.visible_height);
-    let points = [
-        (w / 8, h / 8),
-        (w * 7 / 8, h / 8),
-        (w / 2, h / 2),
-        (w / 8, h * 7 / 8),
-        (w * 7 / 8, h * 7 / 8),
-    ];
+    let points = fixtures::pattern_points((w, h));
     let mut decoder = WindowsVideoDecoder::open(&VideoDecoderConfig {
         codec: format.codec,
         width: w,
@@ -408,7 +402,7 @@ fn decode_sample(
 
 fn check_pattern(pixels: &[[u16; 3]]) -> Result<()> {
     for (index, actual) in pixels.iter().enumerate() {
-        let expected = [if index == 2 { 192 } else { 64 }, 96, 160];
+        let expected = fixtures::avc_hevc_yuv(index);
         ensure!(
             actual
                 .iter()
@@ -429,12 +423,7 @@ fn check_codec_pattern(
 ) -> Result<()> {
     if format.codec == VideoCodec::Av1 && format.chroma == 3 {
         for (i, p) in pixels.iter().enumerate() {
-            let (x, y) = points[i];
-            let expected = [
-                if i == 2 { 181 } else { 71 },
-                if x < w / 2 { 80 } else { 176 },
-                if y < h / 2 { 96 } else { 160 },
-            ];
+            let expected = fixtures::av1_444_yuv((w, h), points[i], i);
             ensure!(
                 p.iter().zip(expected).all(|(a, b)| a.abs_diff(b) <= 8),
                 "{}",
@@ -443,14 +432,9 @@ fn check_codec_pattern(
         }
     } else if format.codec == VideoCodec::Av1 {
         for (i, p) in pixels.iter().enumerate() {
-            let y = match (format.depth, i == 2) {
-                (8, false) => 71,
-                (8, true) => 181,
-                (_, false) => 91,
-                (_, true) => 117,
-            };
+            let [y, u, v] = fixtures::av1_420_yuv(format.depth, i);
             ensure!(
-                p[0].abs_diff(y) <= 8 && p[1].abs_diff(128) <= 8 && p[2].abs_diff(128) <= 8,
+                p[0].abs_diff(y) <= 8 && p[1].abs_diff(u) <= 8 && p[2].abs_diff(v) <= 8,
                 "{}",
                 crate::i18n::t().session.probe_av1_pattern_mismatch
             );

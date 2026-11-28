@@ -31,6 +31,44 @@ use super::{
     format::{self, PixelFormat},
 };
 
+#[derive(Debug, thiserror::Error)]
+pub(super) enum HardwareError {
+    #[error(transparent)]
+    Decode(#[from] DecodeError),
+    #[error("VideoToolbox {operation} (OSStatus {status}): {decode}")]
+    VtStatus {
+        operation: &'static str,
+        status: i32,
+        decode: DecodeError,
+    },
+    #[error("{0}")]
+    InvalidOutput(String),
+}
+
+impl HardwareError {
+    pub(super) fn rejects_format(&self) -> bool {
+        match self {
+            Self::Decode(DecodeError::Unsupported) => true,
+            Self::VtStatus { status, decode, .. } => {
+                *decode == DecodeError::Unsupported
+                    || session_rejects_format(*status)
+                    || *status == kVTFormatDescriptionChangeNotSupportedErr
+            }
+            _ => false,
+        }
+    }
+}
+
+// Keep the playback recovery contract while giving the probe the native reason.
+impl From<HardwareError> for DecodeError {
+    fn from(error: HardwareError) -> Self {
+        match error {
+            HardwareError::Decode(error) | HardwareError::VtStatus { decode: error, .. } => error,
+            HardwareError::InvalidOutput(_) => Self::HardwareFailure,
+        }
+    }
+}
+
 pub(super) struct Hardware {
     stream: Bitstream,
     installed: Option<Installed>,
@@ -82,7 +120,7 @@ impl Hardware {
     }
 
     fn decode(&mut self, data: &[u8], token: i64) -> Output {
-        let sample = self.stream.prepare(data)?;
+        let sample = self.stream.prepare(data).map_err(DecodeError::from)?;
         if !sample.has_picture {
             return Ok(None);
         }
@@ -91,7 +129,7 @@ impl Hardware {
             // NVENC repeats the header, AMF inserts it at keyframes, and the
             // oneVPL AV1 packer emits it for I pictures. Extradata can seed
             // the session but does not make a headerless AV1 AU a sync point.
-            return Err(DecodeError::NeedKeyframe);
+            return Err(DecodeError::NeedKeyframe.into());
         }
         if self.leading.discard(sample.hevc_vcl_nal_type) {
             return Ok(None);
@@ -119,7 +157,7 @@ impl Hardware {
                 old.description = description;
             } else {
                 if !sample.is_keyframe {
-                    return Err(DecodeError::NeedKeyframe);
+                    return Err(DecodeError::NeedKeyframe.into());
                 }
                 self.installed = None;
                 self.installed = Some(Installed::create(config, description, pixel, opening)?);
@@ -168,7 +206,7 @@ impl HevcLeading {
 }
 
 impl Installed {
-    fn new(config: &Configuration, opening: bool) -> Result<Self, DecodeError> {
+    fn new(config: &Configuration, opening: bool) -> Result<Self, HardwareError> {
         let (description, pixel) = prepare_format(config, opening)?;
         Self::create(config, description, pixel, opening)
     }
@@ -178,7 +216,7 @@ impl Installed {
         description: CFRetained<CMVideoFormatDescription>,
         pixel: PixelFormat,
         opening: bool,
-    ) -> Result<Self, DecodeError> {
+    ) -> Result<Self, HardwareError> {
         Ok(Self {
             session: Session::new(&description, pixel, opening)?,
             configuration: config.clone(),
@@ -214,7 +252,7 @@ struct Session {
     callback: Arc<Callback>,
 }
 
-type Output = Result<Option<GpuFrame>, DecodeError>;
+type Output = Result<Option<GpuFrame>, HardwareError>;
 
 struct Callback {
     pixel: PixelFormat,
@@ -235,7 +273,7 @@ impl Session {
         description: &CMVideoFormatDescription,
         pixel: PixelFormat,
         opening: bool,
-    ) -> Result<Self, DecodeError> {
+    ) -> Result<Self, HardwareError> {
         // SAFETY: Framework-owned immutable CFString constants.
         let (require_hardware, format_key, surface_key) = unsafe {
             (
@@ -278,29 +316,27 @@ impl Session {
             tracing::debug!(status, "VideoToolbox session creation failed");
             #[cfg(test)]
             eprintln!("VT create OSStatus={status}");
-            return Err(
-                if opening
-                    && [
-                        kVTCouldNotFindVideoDecoderErr,
-                        kVTVideoDecoderUnsupportedDataFormatErr,
-                        kVTPixelTransferNotSupportedErr,
-                    ]
-                    .contains(&status)
-                {
+            return Err(HardwareError::VtStatus {
+                operation: "session creation",
+                status,
+                decode: if opening && session_rejects_format(status) {
                     DecodeError::Unsupported
                 } else {
                     DecodeError::HardwareFailure
                 },
-            );
+            });
         }
         let out = NonNull::new(out).ok_or(DecodeError::HardwareFailure)?;
         // SAFETY: A successful Create returns a +1 session.
         let session = unsafe { CFRetained::from_raw(out) };
         let this = Self { session, callback };
+        // Production trusts RequireHardwareAcceleratedVideoDecoder. Tests verify
+        // that contract independently without a property query on each live open.
         #[cfg(test)]
         if !this.uses_hardware() {
-            tracing::debug!("VideoToolbox did not confirm hardware decode");
-            return Err(DecodeError::HardwareFailure);
+            return Err(HardwareError::InvalidOutput(
+                "VideoToolbox did not confirm hardware decode".into(),
+            ));
         }
         Ok(this)
     }
@@ -399,12 +435,16 @@ impl Session {
         }
         let output = active.take().and_then(|entry| entry.output);
         if completion != 0 {
-            Err(decode_status(completion))
+            Err(decode_failure(completion))
         } else {
-            output.unwrap_or(if dropped {
-                Ok(None)
-            } else {
-                Err(DecodeError::HardwareFailure)
+            output.unwrap_or_else(|| {
+                if dropped {
+                    Ok(None)
+                } else {
+                    Err(HardwareError::InvalidOutput(
+                        "VideoToolbox produced no output".into(),
+                    ))
+                }
             })
         }
     }
@@ -418,6 +458,23 @@ impl Drop for Session {
             let _ = self.session.wait_for_asynchronous_frames();
             self.session.invalidate();
         }
+    }
+}
+
+fn session_rejects_format(status: i32) -> bool {
+    [
+        kVTCouldNotFindVideoDecoderErr,
+        kVTVideoDecoderUnsupportedDataFormatErr,
+        kVTPixelTransferNotSupportedErr,
+    ]
+    .contains(&status)
+}
+
+fn decode_failure(status: i32) -> HardwareError {
+    HardwareError::VtStatus {
+        operation: "decode",
+        status,
+        decode: decode_status(status),
     }
 }
 
@@ -463,7 +520,7 @@ unsafe extern "C-unwind" fn output_callback(
         #[cfg(test)]
         assert!(!callback.panic_on_output, "injected VT callback panic");
         if status != 0 {
-            Err(decode_status(status))
+            Err(decode_failure(status))
         } else if flags.contains(VTDecodeInfoFlags::FrameDropped) || image.is_null() {
             Ok(None)
         } else {
@@ -479,7 +536,7 @@ unsafe extern "C-unwind" fn output_callback(
         Ok(output) => entry.output = Some(output),
         Err(payload) => {
             let token = entry.token;
-            entry.output = Some(Err(DecodeError::HardwareFailure));
+            entry.output = Some(Err(DecodeError::HardwareFailure.into()));
             drop(active);
             // Even recovery must not unwind across VT: logging and disposing
             // of an arbitrary Rust panic payload can themselves panic.
@@ -501,19 +558,27 @@ fn frame_from_callback(
     entry: &Submission,
 ) -> Output {
     if CFGetTypeID(Some(pixel_buffer.as_ref())) != CVPixelBufferGetTypeID() {
-        return Err(DecodeError::HardwareFailure);
+        return Err(HardwareError::InvalidOutput(
+            "VideoToolbox returned no pixel buffer".into(),
+        ));
     }
     let fourcc = CVPixelBufferGetPixelFormatType(&pixel_buffer);
-    if fourcc != pixel.fourcc || CVPixelBufferGetPlaneCount(&pixel_buffer) != 2 {
+    let planes = CVPixelBufferGetPlaneCount(&pixel_buffer);
+    if fourcc != pixel.fourcc || planes != 2 {
         tracing::debug!(
             actual = fourcc,
             expected = pixel.fourcc,
             "VideoToolbox returned an unexpected pixel format"
         );
-        return Err(DecodeError::HardwareFailure);
+        return Err(HardwareError::InvalidOutput(format!(
+            "unexpected pixel format {fourcc:#010x} ({planes} planes), expected {:#010x} (2 planes)",
+            pixel.fourcc
+        )));
     }
     if CVPixelBufferGetIOSurface(Some(&pixel_buffer)).is_none() {
-        return Err(DecodeError::HardwareFailure);
+        return Err(HardwareError::InvalidOutput(
+            "GPU frame has no IOSurface".into(),
+        ));
     }
     let s = entry.signature;
     let (w, h) = (
@@ -531,10 +596,16 @@ fn frame_from_callback(
             None
         }
     };
+    let unexpected_dimensions = || {
+        HardwareError::InvalidOutput(format!(
+            "unexpected pixel buffer dimensions {w}x{h}, expected {}x{} visible or {}x{} coded",
+            s.visible_width, s.visible_height, s.coded_width, s.coded_height
+        ))
+    };
     let x = visible_offset(w, s.visible_width, s.coded_width, s.crop_left)
-        .ok_or(DecodeError::HardwareFailure)?;
+        .ok_or_else(unexpected_dimensions)?;
     let y = visible_offset(h, s.visible_height, s.coded_height, s.crop_top)
-        .ok_or(DecodeError::HardwareFailure)?;
+        .ok_or_else(unexpected_dimensions)?;
     Ok(Some(GpuFrame {
         pts: entry.token,
         width: s.visible_width,
@@ -601,7 +672,7 @@ fn vt_callback_panic_is_contained_and_fails_the_submission() {
     let active = callback.active.lock().expect("callback poisoned the mutex");
     assert!(matches!(
         active.as_ref().unwrap().output,
-        Some(Err(DecodeError::HardwareFailure))
+        Some(Err(HardwareError::Decode(DecodeError::HardwareFailure)))
     ));
 }
 
@@ -612,7 +683,10 @@ fn vt_errors_are_typed_for_keyframe_request_and_backend_fallback() {
         kVTVideoDecoderReferenceMissingErr,
         kVTVideoDecoderUnsupportedDataFormatErr,
     ] {
-        assert_eq!(decode_status(status), DecodeError::NeedKeyframe);
+        assert_eq!(
+            DecodeError::from(decode_failure(status)),
+            DecodeError::NeedKeyframe
+        );
     }
     for status in [
         kVTInvalidSessionErr,
@@ -620,7 +694,7 @@ fn vt_errors_are_typed_for_keyframe_request_and_backend_fallback() {
         kVTSessionMalfunctionErr,
         kVTVideoDecoderNotAvailableNowErr,
     ] {
-        let error = anyhow::Error::new(decode_status(status)).context("submit");
+        let error = anyhow::Error::new(DecodeError::from(decode_failure(status))).context("submit");
         assert_eq!(
             error.downcast_ref::<DecodeError>(),
             Some(&DecodeError::HardwareFailure)
