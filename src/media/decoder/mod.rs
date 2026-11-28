@@ -10,21 +10,14 @@ use anyhow::{Context, Result, anyhow, bail};
 use bytes::Bytes;
 use farwing_protocol::session::Decoder;
 
-/// The sizes a hardware decoder is probed at, largest first.
-pub(crate) const PROBE_SIZES: [(u32, u32); 3] = [(3840, 2160), (2560, 1440), (1920, 1080)];
-
-#[cfg(windows)]
-fn session_codec(codec: VideoCodec) -> farwing_protocol::session::Codec {
-    match codec {
-        VideoCodec::H264 => farwing_protocol::session::Codec::H264,
-        VideoCodec::H265 => farwing_protocol::session::Codec::Hevc,
-        VideoCodec::Av1 => farwing_protocol::session::Codec::Av1,
-    }
-}
-
 #[cfg(windows)]
 pub(crate) mod diagnostics;
+mod hardware_probe;
 pub(crate) mod software_slot;
+
+#[cfg(windows)]
+use hardware_probe::PROBE_SIZES;
+use hardware_probe::enumerate_hardware_decoders;
 
 #[derive(Debug)]
 pub(crate) struct DecodedFrame {
@@ -278,7 +271,7 @@ impl NativeVideoDecoder {
                     decoder: Box::new(decoder),
                     writer,
                     candidate,
-                    label: (crate::i18n::t().session.decoder_hardware)(platform_label()),
+                    label: (crate::i18n::t().session.decoder_hardware)("VideoToolbox"),
                     software_slot: None,
                 })
             }
@@ -401,16 +394,17 @@ impl NativeVideoDecoder {
             height,
             "opened hardware decoder on adapter"
         );
+        const BACKEND: &str = "DXVA11";
+        let decoder_hardware = crate::i18n::t().session.decoder_hardware;
+        let adapter_name = crate::platform::capture::encoding_adapters()
+            .ok()
+            .and_then(|items| items.into_iter().find(|a| a.luid == adapter))
+            .map_or_else(|| BACKEND.into(), |a| a.name);
         Ok(Self {
             decoder: Box::new(backend),
             writer: reader,
             candidate: DecoderCandidate::WindowsD3d11 { adapter },
-            label: (crate::i18n::t().session.decoder_hardware)(
-                &crate::platform::capture::encoding_adapters()
-                    .ok()
-                    .and_then(|items| items.into_iter().find(|a| a.luid == adapter))
-                    .map_or_else(|| platform_label().into(), |a| a.name),
-            ),
+            label: decoder_hardware(&format!("{adapter_name} · {BACKEND}")),
             software_slot: None,
         })
     }
@@ -595,48 +589,26 @@ fn decoder_inventory<T>(
 
 #[cfg(windows)]
 fn probe_hardware_decoders() -> Vec<(VideoCodec, Decoder)> {
-    let mut capabilities = Vec::new();
     let Ok(writers) = SurfaceWriter::available() else {
-        return capabilities;
+        return Vec::new();
     };
-    for codec in [VideoCodec::H264, VideoCodec::H265, VideoCodec::Av1] {
-        for chroma in [1, 3] {
-            for depth in [8, 10] {
-                for (width, height) in PROBE_SIZES {
-                    if writers.iter().any(|writer| {
-                        PlatformVideoDecoder::probe_format(
-                            writer.device_handle(),
-                            codec,
-                            width,
-                            height,
-                            depth,
-                            chroma,
-                        )
-                    }) {
-                        capabilities.push((
-                            codec,
-                            Decoder {
-                                codec: session_codec(codec),
-                                chroma444: chroma == 3,
-                                bit10: depth == 10,
-                                width,
-                                height,
-                                hardware: true,
-                                av1_visible_size: true,
-                            },
-                        ));
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    capabilities
+    enumerate_hardware_decoders(|codec, width, height, depth, chroma| {
+        writers.iter().any(|writer| {
+            PlatformVideoDecoder::probe_format(
+                writer.device_handle(),
+                codec,
+                width,
+                height,
+                depth,
+                chroma,
+            )
+        })
+    })
 }
 
 #[cfg(target_os = "macos")]
 fn probe_hardware_decoders() -> Vec<(VideoCodec, Decoder)> {
-    PlatformVideoDecoder::probe_hardware(&PROBE_SIZES)
+    enumerate_hardware_decoders(PlatformVideoDecoder::probe_format)
 }
 
 #[cfg(windows)]
@@ -733,14 +705,4 @@ fn decoder_config(
         gpu_device,
         extra_data,
     }
-}
-
-#[cfg(windows)]
-fn platform_label() -> &'static str {
-    "DXVA11"
-}
-
-#[cfg(target_os = "macos")]
-fn platform_label() -> &'static str {
-    "VideoToolbox"
 }

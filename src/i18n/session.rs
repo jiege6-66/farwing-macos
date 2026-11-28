@@ -514,7 +514,7 @@ pub(crate) struct Session {
     /// Status
     pub software_slot_failed: fn(&str) -> String,
     pub decoder_software: &'static str,
-    /// Adapter name
+    /// Backend label, including an adapter name if applicable.
     pub decoder_hardware: fn(&str) -> String,
     pub decoder_note_recovered: &'static str,
     pub decoder_note_missing_gpu: &'static str,
@@ -1132,7 +1132,7 @@ pub(crate) const ZH_CN: Session = Session {
     software_slot_create_failed: "无法创建软件解码窗口限制",
     software_slot_failed: |status| format!("获取软件解码窗口名额失败：{status}"),
     decoder_software: "Farwing 软件解码",
-    decoder_hardware: |adapter| format!("{adapter} · DXVA11 硬件解码"),
+    decoder_hardware: |backend| format!("{backend} 硬件解码"),
     decoder_note_recovered: "原候选不可用，已回退",
     decoder_note_missing_gpu: "首选显卡不可用，已自动选择",
     decoder_note_preferred_gpu: "首选显卡",
@@ -1758,7 +1758,7 @@ pub(crate) const EN: Session = Session {
     software_slot_create_failed: "Couldn't create the software decoding window limit",
     software_slot_failed: |status| format!("Couldn't get a software decoding slot: {status}"),
     decoder_software: "Farwing software decoding",
-    decoder_hardware: |adapter| format!("{adapter} · DXVA11 hardware decoding"),
+    decoder_hardware: |backend| format!("{backend} hardware decoding"),
     decoder_note_recovered: "Previous choice unavailable; fell back",
     decoder_note_missing_gpu: "Preferred GPU unavailable; chosen automatically",
     decoder_note_preferred_gpu: "Preferred GPU",
@@ -1925,6 +1925,17 @@ mod tests {
             let session = &messages(language).session;
             assert!((session.progress_retry_in)("E", 3, 2).contains('E'));
             assert!((session.error_device_offline)("PC").contains("PC"));
+        }
+    }
+
+    #[test]
+    fn hardware_decoder_label_does_not_assume_dxva11() {
+        for (language, expected) in [
+            (Language::ZhCn, "VideoToolbox 硬件解码"),
+            (Language::En, "VideoToolbox hardware decoding"),
+        ] {
+            let decoder_hardware = messages(language).session.decoder_hardware;
+            assert_eq!(decoder_hardware("VideoToolbox"), expected);
         }
     }
 }

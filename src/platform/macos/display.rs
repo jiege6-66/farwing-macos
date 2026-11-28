@@ -7,7 +7,12 @@ use objc2_core_graphics::{
 };
 use std::{ffi::c_void, ptr::null_mut};
 
-type DisplayMode = (CGDirectDisplayID, (u32, u32), f64);
+struct DisplayMode {
+    id: CGDirectDisplayID,
+    width: u32,
+    height: u32,
+    refresh_hz: f64,
+}
 
 pub fn detect_local_display() -> Result<LocalDisplayInfo> {
     let main = CGMainDisplayID();
@@ -22,9 +27,9 @@ fn select_local_display(
     main: CGDirectDisplayID,
     displays: &[DisplayMode],
 ) -> Result<LocalDisplayInfo> {
-    let &(_, (width, height), _) = displays
+    let &DisplayMode { width, height, .. } = displays
         .iter()
-        .find(|(id, ..)| *id == main)
+        .find(|mode| mode.id == main)
         .context("no main local display was detected")?;
     ensure!(
         width != 0 && height != 0,
@@ -33,7 +38,7 @@ fn select_local_display(
     // Main display geometry and the fastest active refresh serve different purposes.
     let refresh_hz = displays
         .iter()
-        .map(|&(_, _, hz)| hz)
+        .map(|mode| mode.refresh_hz)
         .filter(|hz| valid_refresh(*hz))
         .map(|hz| hz.round() as u32)
         .fold(30, u32::max);
@@ -68,24 +73,24 @@ fn active_displays() -> Result<Vec<CGDirectDisplayID>> {
 }
 
 fn read_mode(id: CGDirectDisplayID) -> Result<DisplayMode> {
-    let mode = CGDisplayCopyDisplayMode(id);
-    let (size, rate) = if let Some(mode) = mode.as_deref() {
-        (
-            (
-                u32::try_from(CGDisplayMode::pixel_width(Some(mode)))?,
-                u32::try_from(CGDisplayMode::pixel_height(Some(mode)))?,
-            ),
-            CGDisplayMode::refresh_rate(Some(mode)),
-        )
-    } else {
-        ((0, 0), 0.0)
-    };
-    let rate = if valid_refresh(rate) {
+    let mode = CGDisplayCopyDisplayMode(id)
+        .with_context(|| format!("local display {id} has no display mode"))?;
+    let width = u32::try_from(CGDisplayMode::pixel_width(Some(&mode)))
+        .with_context(|| format!("local display {id} mode pixel width exceeds u32"))?;
+    let height = u32::try_from(CGDisplayMode::pixel_height(Some(&mode)))
+        .with_context(|| format!("local display {id} mode pixel height exceeds u32"))?;
+    let rate = CGDisplayMode::refresh_rate(Some(&mode));
+    let refresh_hz = if valid_refresh(rate) {
         rate
     } else {
         nominal_refresh(id)
     };
-    Ok((id, size, rate))
+    Ok(DisplayMode {
+        id,
+        width,
+        height,
+        refresh_hz,
+    })
 }
 
 fn valid_refresh(rate: f64) -> bool {
@@ -131,23 +136,42 @@ unsafe extern "C" {
 
 #[cfg(test)]
 mod tests {
-    use super::select_local_display;
+    use super::{CGDirectDisplayID, DisplayMode, select_local_display};
+
+    fn mode(id: CGDirectDisplayID, width: u32, height: u32, refresh_hz: f64) -> DisplayMode {
+        DisplayMode {
+            id,
+            width,
+            height,
+            refresh_hz,
+        }
+    }
 
     #[test]
     fn uses_main_display_geometry_and_fastest_active_refresh() {
-        let displays = [(2, (3840, 2160), 143.6), (1, (2560, 1664), 60.0)];
+        let displays = [mode(2, 3840, 2160, 143.6), mode(1, 2560, 1664, 60.0)];
         let display = select_local_display(1, &displays).unwrap();
         assert_eq!((display.width, display.height), (2560, 1664));
         assert_eq!(display.refresh_hz, 144);
     }
 
     #[test]
+    fn uses_secondary_refresh_when_main_refresh_is_invalid() {
+        let displays = [mode(1, 2560, 1664, 0.0), mode(2, 1920, 1080, 144.0)];
+        let display = select_local_display(1, &displays).unwrap();
+        assert_eq!(
+            (display.width, display.height, display.refresh_hz),
+            (2560, 1664, 144)
+        );
+    }
+
+    #[test]
     fn ignores_invalid_rates_and_applies_a_30_hz_floor() {
         let displays = [
-            (1, (2560, 1664), 24.0),
-            (2, (1920, 1080), f64::NAN),
-            (3, (1920, 1080), f64::INFINITY),
-            (4, (1920, 1080), 0.0),
+            mode(1, 2560, 1664, 24.0),
+            mode(2, 1920, 1080, f64::NAN),
+            mode(3, 1920, 1080, f64::INFINITY),
+            mode(4, 1920, 1080, 0.0),
         ];
         assert_eq!(select_local_display(1, &displays).unwrap().refresh_hz, 30);
         assert_eq!(
@@ -159,13 +183,13 @@ mod tests {
     #[test]
     fn rejects_missing_main_display() {
         assert!(select_local_display(1, &[]).is_err());
-        assert!(select_local_display(1, &[(2, (3840, 2160), 60.0)]).is_err());
+        assert!(select_local_display(1, &[mode(2, 3840, 2160, 60.0)]).is_err());
     }
 
     #[test]
     fn rejects_zero_main_display_dimensions() {
-        for size in [(0, 1664), (2560, 0)] {
-            assert!(select_local_display(1, &[(1, size, 60.0)]).is_err());
+        for (width, height) in [(0, 1664), (2560, 0)] {
+            assert!(select_local_display(1, &[mode(1, width, height, 60.0)]).is_err());
         }
     }
 }
