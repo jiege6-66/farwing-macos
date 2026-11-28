@@ -206,8 +206,7 @@ impl Drop for ReadLock<'_> {
     }
 }
 
-#[cfg(test)]
-pub(super) fn test_pixels<const N: usize>(
+pub(super) fn sample_pixels<const N: usize>(
     frame: &GpuFrame,
     points: [(u32, u32); N],
 ) -> Result<[[u16; 3]; N]> {

@@ -43,6 +43,10 @@ pub(super) fn enumerate_hardware_decoders(
     capabilities
 }
 
+#[cfg(all(test, target_os = "macos"))]
+#[path = "hardware_probe_macos_tests.rs"]
+mod macos_tests;
+
 #[cfg(test)]
 mod tests {
     use super::{Decoder, PROBE_SIZES, VideoCodec, enumerate_hardware_decoders, session_codec};

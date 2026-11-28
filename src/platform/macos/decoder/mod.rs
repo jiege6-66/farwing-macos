@@ -14,6 +14,7 @@ use crate::media::{
 
 mod bitstream;
 mod format;
+mod probe;
 #[cfg(test)]
 mod tests;
 mod vt;
@@ -43,7 +44,6 @@ impl GpuFrame {
         self.height
     }
 
-    #[cfg(test)]
     pub(super) fn pixel_format(&self) -> u32 {
         objc2_core_video::CVPixelBufferGetPixelFormatType(&self.pixel_buffer)
     }
@@ -122,22 +122,20 @@ impl PlatformVideoDecoder {
     }
 
     pub(crate) fn probe_format(
-        _codec: VideoCodec,
-        _width: u32,
-        _height: u32,
-        _depth: u8,
-        _chroma: u8,
+        codec: VideoCodec,
+        width: u32,
+        height: u32,
+        depth: u8,
+        chroma: u8,
     ) -> bool {
-        // T2c: advertise only formats verified with hardware fixture decoding.
-        false
+        probe::probe_format(codec, width, height, depth, chroma)
     }
 
     pub(crate) fn supports_hardware_format(
-        _codec: VideoCodec,
-        _format: VideoFormatSignature,
+        codec: VideoCodec,
+        format: VideoFormatSignature,
     ) -> bool {
-        // T2c: consume the verified hardware capabilities for candidate selection.
-        false
+        probe::supports_hardware_format(codec, format)
     }
 
     pub(crate) fn set_notification(&mut self, notification: DecoderNotification) {

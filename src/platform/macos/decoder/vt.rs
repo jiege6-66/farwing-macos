@@ -298,10 +298,10 @@ impl Session {
         let session = unsafe { CFRetained::from_raw(out) };
         let this = Self { session, callback };
         #[cfg(test)]
-        assert!(
-            this.uses_hardware(),
-            "VideoToolbox did not confirm hardware decode"
-        );
+        if !this.uses_hardware() {
+            tracing::debug!("VideoToolbox did not confirm hardware decode");
+            return Err(DecodeError::HardwareFailure);
+        }
         Ok(this)
     }
 

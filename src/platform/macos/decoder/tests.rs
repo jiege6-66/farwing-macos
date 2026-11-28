@@ -124,45 +124,8 @@ fn vt_fixture_matrix() {
             assert_eq!(fourcc, expected_fourcc, "{label}");
             assert_eq!((frame.width(), frame.height()), size);
             let (w, h) = size;
-            let points = [
-                (w / 8, h / 8),
-                (w * 7 / 8, h / 8),
-                (w / 2, h / 2),
-                (w / 8, h * 7 / 8),
-                (w * 7 / 8, h * 7 / 8),
-            ];
-            let actual = crate::platform::surface::test_pixels(&frame, points).unwrap();
-            // Same fixture points, expected YUV values and tolerance as Windows diagnostics.
-            for (i, ([y, u, v], (x, row))) in actual.into_iter().zip(points).enumerate() {
-                let expected = if codec != Av1 {
-                    [if i == 2 { 192 } else { 64 }, 96, 160]
-                } else if chroma == 3 {
-                    [
-                        if i == 2 { 181 } else { 71 },
-                        if x < w / 2 { 80 } else { 176 },
-                        if row < h / 2 { 96 } else { 160 },
-                    ]
-                } else {
-                    [
-                        match (depth, i == 2) {
-                            (8, false) => 71,
-                            (8, true) => 181,
-                            (_, false) => 91,
-                            (_, true) => 117,
-                        },
-                        128,
-                        128,
-                    ]
-                };
-                assert!(
-                    [y, u, v]
-                        .into_iter()
-                        .zip(expected)
-                        .all(|(a, b)| a.abs_diff(b) <= 8),
-                    "{label}: point {i}: {:?} != {expected:?}",
-                    [y, u, v]
-                );
-            }
+            probe::check_fixture_pattern(&frame, codec, chroma, depth)
+                .unwrap_or_else(|error| panic!("{label}: {error:#}"));
             let surface = SurfaceWriter::new()
                 .unwrap()
                 .wrap_decoded_surface(frame)
@@ -291,23 +254,12 @@ fn av1_waits_for_a_shown_keyframe_with_in_band_sequence() {
 }
 
 #[test]
-fn t2b_does_not_advertise_hardware_or_non_avc_software() {
-    let size = (1280, 720);
-    for codec in [VideoCodec::H264, VideoCodec::H265, VideoCodec::Av1] {
-        assert!(!PlatformVideoDecoder::probe_format(
-            codec, size.0, size.1, 8, 1
+fn software_decoder_rejects_non_h264() {
+    for codec in [VideoCodec::H265, VideoCodec::Av1] {
+        assert!(matches!(
+            PlatformVideoDecoder::open(&config(codec, (1280, 720), DecoderMode::Software)),
+            Err(DecodeError::Unsupported)
         ));
-        let data = fixture(codec, 1, 8, size);
-        let format = crate::media::video_format::parse_stream_format(codec, &data).unwrap();
-        assert!(!PlatformVideoDecoder::supports_hardware_format(
-            codec, format
-        ));
-        if codec != VideoCodec::H264 {
-            assert!(matches!(
-                PlatformVideoDecoder::open(&config(codec, size, DecoderMode::Software)),
-                Err(DecodeError::Unsupported)
-            ));
-        }
     }
 }
 
