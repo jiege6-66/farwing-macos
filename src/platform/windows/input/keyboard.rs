@@ -7,8 +7,7 @@
 //! the host injects the inverse scan code, so its own layout and IME decide
 //! what the key means.
 
-pub(crate) const KEYBOARD: u32 = 0x07 << 16;
-pub(crate) const CONSUMER: u32 = 0x0C << 16;
+pub(crate) use crate::features::remote_input::keys::{CONSUMER, KEYBOARD, LOCKS, lock_index};
 
 const K: u32 = KEYBOARD;
 const C: u32 = CONSUMER;
@@ -178,18 +177,6 @@ pub(crate) fn scan(usage: u32) -> Option<u16> {
     KEYS.iter().find(|(_, u)| *u == usage).map(|(s, _)| *s)
 }
 
-/// Caps Lock, Num Lock and Scroll Lock, in `LockState` field order.
-pub(crate) const LOCKS: [u32; 3] = [K | 0x39, K | 0x53, K | 0x47];
-
-pub(crate) fn lock_index(usage: u32) -> Option<usize> {
-    LOCKS.iter().position(|lock| *lock == usage)
-}
-
-/// Shift, Ctrl, Alt and Windows keys on either side.
-pub(crate) fn modifier(usage: u32) -> bool {
-    (K | 0xe0..=K | 0xe7).contains(&usage)
-}
-
 /// Keys whose virtual key identifies them regardless of layout or of how the
 /// scan code was reported (shared 0x45, media keys sent without a scan code).
 fn fixed(vk: u16) -> Option<u32> {
@@ -347,6 +334,23 @@ mod tests {
     }
 
     #[test]
+    fn shared_allowlist_matches_scan_for_every_usage() {
+        use crate::features::remote_input::keys;
+
+        // `scan` is the unchanged Windows lookup formerly used by RemoteInput.
+        for page in [0, KEYBOARD, CONSUMER, 0xffff_0000] {
+            for id in 0..=0xffff {
+                let key = page | id;
+                assert_eq!(keys::supported(key), scan(key).is_some(), "usage {key:#x}");
+            }
+        }
+        // Also catch additions to the scan table on any other page.
+        for &(_, key) in KEYS {
+            assert!(keys::supported(key), "usage {key:#x}");
+        }
+    }
+
+    #[test]
     fn every_entry_is_stable() {
         for &(scan_code, key) in KEYS {
             assert!(matches!(key >> 16, 0x07 | 0x0c) && key & 0xffff != 0);
@@ -382,6 +386,8 @@ mod tests {
 
     #[test]
     fn locks_and_modifiers() {
+        use crate::features::remote_input::keys::modifier;
+
         assert_eq!(lock_index(usage(0x3a).unwrap()), Some(0));
         assert_eq!(lock_index(usage(0xe045).unwrap()), Some(1));
         assert_eq!(lock_index(usage(0x46).unwrap()), Some(2));

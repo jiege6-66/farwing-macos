@@ -8,11 +8,11 @@ use anyhow::{Result, bail};
 use std::time::{Duration, Instant};
 use tokio::sync::Notify;
 
+pub(crate) mod keys;
 pub(crate) mod polling;
 mod recovery;
 pub(crate) use recovery::{InputRecovery, InputWork};
 
-use crate::platform::windows::input::keyboard;
 pub(crate) use crate::protocol::input::SystemCommand;
 
 const MAX_EVENTS: usize = 512;
@@ -147,7 +147,7 @@ impl InputEvent {
     /// A non-repeat press of Caps/Num/Scroll Lock.
     fn lock_press(&self) -> bool {
         matches!(*self, Self::Key { key: KeyInput::Usage { usage, repeat: false }, down: true }
-            if keyboard::lock_index(usage).is_some())
+            if keys::lock_index(usage).is_some())
     }
 }
 
@@ -455,7 +455,7 @@ impl RemoteInput {
     /// Native adapters supply the HID usage of the physical key, and only for
     /// a verified Windows peer.
     pub fn key(&self, owner: u64, usage: u32, down: bool) -> bool {
-        if keyboard::scan(usage).is_none() {
+        if !keys::supported(usage) {
             return false;
         }
         let mut s = self.lock();
@@ -481,7 +481,7 @@ impl RemoteInput {
             // Pressing a lock key toggles the host as well as this machine.
             if lock_press
                 && let (Some(model), Some(index)) =
-                    (s.lock_model.as_mut(), keyboard::lock_index(usage))
+                    (s.lock_model.as_mut(), keys::lock_index(usage))
             {
                 model[index] = !model[index];
             }
@@ -678,7 +678,7 @@ impl RemoteInput {
         // Release ordinary keys before modifiers; never synthesize new downs.
         for modifier in [false, true] {
             for &usage in &s.remote_keys {
-                if keyboard::modifier(usage) == modifier {
+                if keys::modifier(usage) == modifier {
                     s.queue.push_back(InputEvent::release(usage));
                 }
             }
@@ -821,7 +821,7 @@ impl RemoteInput {
                 s.release_checkpoint.extend(keys.iter().copied());
                 for modifier in [false, true] {
                     for &usage in &keys {
-                        if keyboard::modifier(usage) == modifier {
+                        if keys::modifier(usage) == modifier {
                             s.queue.push_back(InputEvent::release(usage));
                         }
                     }
@@ -896,7 +896,7 @@ impl RemoteInput {
             // release is already queued.
             for modifier in [false, true] {
                 for &usage in &retired {
-                    if keyboard::modifier(usage) != modifier
+                    if keys::modifier(usage) != modifier
                         || s.queue
                             .iter()
                             .any(|event| event.usage() == Some((usage, false)))
@@ -910,7 +910,7 @@ impl RemoteInput {
                             s.queue.iter().position(|event| {
                                 event
                                     .usage()
-                                    .is_some_and(|(key, down)| !down && keyboard::modifier(key))
+                                    .is_some_and(|(key, down)| !down && keys::modifier(key))
                             })
                         })
                         .flatten();
@@ -1706,8 +1706,8 @@ mod tests {
     use super::*;
 
     const OWNER: u64 = 1;
-    const A: u32 = keyboard::KEYBOARD | 0x04;
-    const CAPS: u32 = keyboard::LOCKS[0];
+    const A: u32 = keys::KEYBOARD | 0x04;
+    const CAPS: u32 = keys::LOCKS[0];
 
     fn active() -> RemoteInput {
         let input = RemoteInput::default();
