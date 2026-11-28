@@ -11,7 +11,7 @@
 不在本文：Mac 被控、无人值守、虚拟屏与驱动、剪贴板、文件传输、拖放、聊天语音与通话、批注、插件、HDR、自动更新。它们在 §0.2 列为后续项，届时另写简报。
 
 - 基线的 `文件:行` 对应 2026-11-27 的代码快照（`next@735d69e`）；M1 更新的引用对应 `bf70694`，M2 更新的引用对应 `aa1517d`。代码与 `docs/**/*.md` 不一致时以代码为准，差异见 §10。
-- 本文写作时没有在 Mac 上构建过本项目（开发机尚未安装 Rust）。标【待测】的结论需要真机验证。
+- 原始简报写作时未在 Mac 上构建过本项目；现有本机构建检查、仓库外实测与 CI 的范围见 [自测记录](../selftest-results.md) 和 §12。标【待测】的结论仍需真机验证。
 - 用语：被控 = host；主控 = controller = 本文的 Mac 客户端；“Windows 主控”指现有的 Windows 客户端；“平台层”指 `src/platform/<os>`。
 
 上游对其他平台的期望（[djkcyl/farwing#5](https://github.com/djkcyl/farwing/issues/5#issuecomment-6107018029)，原帖讨论的是当时的 Linux 移植；作者表达的是架构与体验上的期望，建议先在 fork 迭代、再把通用改进整理成 PR，并未要求移植先获批准）：清晰、可维护的后端抽象，让共用业务与平台实现各有明确边界；编解码、画面呈现的效率，输入交互和功能完整性；充分利用各平台的原生能力，功能行为和操作体验与 Windows 版尽量一致。代码约定见 `src/platform/mod.rs:1-2`：产品策略留在 session / features，平台层只做系统实现，不写给未来系统的占位实现。由此本文的做法是：
@@ -42,7 +42,7 @@
 3. **共用层带着 Windows 类型。**
    - 解码：`VideoDecoderConfig.gpu_device: Option<ID3D11Device>`（`src/media/decode_api/video.rs:31`）；`DecodedFrame.surface` 是 `D3D11Surface`（`src/media/decoder/mod.rs:27-31`）；`DecoderCandidate::WindowsD3d11`（`:66-67`）；`decoder_pool.rs:34` 持有 `D3D11SurfaceWriter`；软件解码槽用 named mutex（`decoder/software_slot.rs`）。
    - 观看窗口入口：session 层直接构造 `application::viewer::windows_presenter::ConnectingWindowsRunConfig`（`src/session/controller/viewing.rs:161-175`）。
-   - 输入：主控过滤 HID usage 的表在 `platform::windows::input::keyboard`（`src/features/remote_input.rs:15`、`:458`）；按键超时计时器也在 Windows 平台层（`:309`、`:337`）。
+   - 输入：主控过滤 HID usage 的表在 `platform::windows::input::keyboard`（`src/features/remote_input.rs:15`、`:458`）；鼠标移动节流计时器也在 Windows 平台层（`:309`、`:337`；M4 改动见 §6.2）。
 4. **身份和能力写死成 Windows 被控。**
    - 设备注册 `platform: Windows`（`src/account/auth/mod.rs:287`），注册能力固定为 `host/files/ports/power/wake_on_lan/assist`（`src/account/feature_ability.rs:36-49`）。这些能力全是被控能力（`crates/protocol/src/lib.rs:160-171`），Mac 主控如实注册应为空集合，否则服务器把它列为可连接的被控（`src/account/api/mod.rs:392-395`）。
    - 直连握手 `DirectHello.platform` 写死（`src/transport/direct/mod.rs:310`），主控直连记录 `controller_platform` 写死（`src/session/controller/direct.rs:161`）。
@@ -88,7 +88,7 @@
 | 调用系统框架 | `objc2` 系列 crate（`objc2-app-kit`、`objc2-metal`、`objc2-video-toolbox`、`objc2-core-media`、`objc2-core-video`、`objc2-io-surface`），不引入 Swift / Objective-C 源文件 |
 | 平台层目录 | `src/platform/macos/`，由 `src/platform/mod.rs` 按 `target_os` 导出与 Windows 同名的模块；平台没有实现的模块不导出 |
 | 被控代码 | 倾向控制面（设置、授权、状态）保留可编译，运行时（采集、编码、注入、驱动、服务）在 Mac 上不编入（§2.2 做法 B）；最终边界等 #34 回复再定 |
-| 宣告 | 设备注册能力为空集合；HELLO 只声明已实现的特性；`video.recovery` 等 V3（§5.4）通过后再声明 |
+| 宣告 | 设备注册能力为空集合；HELLO 只声明已实现的特性；Mac 默认不声明 `video.recovery`，用 `dev video --recovery` 做 V3（§5.4）；V3 通过后改 `src/protocol/peer.rs` 的初值即可默认声明 |
 | 权限验收 | 一律用固定 bundle id、Apple 签发证书签名的 `.app` 从 Finder 启动来验收（§8） |
 | 最低系统与架构 | 建议 macOS 14+、仅 arm64【待确认】 |
 | egui 渲染后端 | 先用能最快跑起来的后端，M8 对比后定型（§4.2） |
@@ -128,7 +128,7 @@ M1 已按代码确认 `src/main.rs` 的命令在 Mac 首版的取舍：
 
 上表为首版目标。M5 前，`Gui` 和默认启动设备中心只在 Windows 编入；Mac 不带子命令时打印 clap 帮助，退出码为 0（`src/main.rs:631-647`）。M6 前，`Connect`、`Assist` 只在 Windows 编入：包括 `--direct`、`--audio-only`、`--dev-*` 在内的所有路径都会打开观看窗口（`src/main.rs:902-909`、`:1098-1162`）。便携启动器 `application::bootstrap` 与 `--bootstrap-version` 也只在 Windows 编入（`src/application/mod.rs:13-14`、`src/main.rs:29-31`）；语言初始化在两边都执行（`src/main.rs:595`）。
 
-其中，`Trusted` 整个命令不编入：它操作本机被控端的信任列表，后台服务模式下经 `transport::direct::managed` 访问 Windows 常驻服务。命令定义、分派及 `src/application/mod.rs`、`src/application/cli.rs` 中对应的 Windows 专用入口均用 `#[cfg(windows)]` 隔开。Mac 上库的编译阻断尚未清完，`cargo check` 还未走到 `main.rs` 的类型检查；本轮 Windows 构建与库测试已通过（§12）。
+其中，`Trusted` 整个命令不编入：它操作本机被控端的信任列表，后台服务模式下经 `transport::direct::managed` 访问 Windows 常驻服务。命令定义、分派及 `src/application/mod.rs`、`src/application/cli.rs` 中对应的 Windows 专用入口均用 `#[cfg(windows)]` 隔开。Mac 上库的编译阻断尚未清完，`cargo check` 还未走到 `main.rs` 的类型检查；M2 的 Windows 构建与库测试已通过，M3/M4 的 Windows CI 待跑（§12）。
 
 ### 1.4 检查
 
@@ -214,8 +214,8 @@ M2 已完成：
 - 客户端测试：`direct_policy_describes_a_windows_host`、`controller_only_builds_register_no_capabilities`（非 Windows）、`windows_registers_the_host_capabilities`（Windows）、`host_omits_touch_and_pen_without_synthetic_pointers`（非 Windows）。
 
 待 M2 验收时在 Windows 主控上确认（按代码推断，未实测）：这台 Mac 的状态为“受限”（`src/application/app/device_status.rs:100`，`controlled_support` 为假），但下面几处只看 `platform.is_desktop()`，Mac 仍会出现：观看列表与连接页（`show_in_watching_list`，`src/application/app/mod.rs:877`）、观看窗口的切换设备列表（`src/application/viewer/device_switch.rs:106`）、本账号设备详情的电源卡片（`src/application/app/view/device_details.rs:663`）。实际操作分别被服务端（`host_disabled`）或 `src/account/power.rs:28` 拒绝。是否要在这些列表中按 `controlled_support` 过滤，验收时再定。
-- 主控 HELLO 特性（`controller_features`，`src/protocol/peer.rs:244-264`）：保留 `display.config`、`display.virtual`（请求 Windows 被控改分辨率、建虚拟屏，界面与协议逻辑共用）、`cursor.participants`。M1 已在 Windows 以外去掉 `touch`、`pen`（测试 `controller_advertises_native_pointers_only_on_windows`，`src/protocol/peer.rs:394`）以及 `clipboard`、`clipboard.files`、`files`（后三项在被控 HELLO 中也已去掉）。设备注册不再宣告 `files`，其余注册能力清空留给 M2。Mac 首版的 `video.recovery` 等 §5.4 的 V3 通过后再声明，在此之前走现有的 `disable_controller_recovery`（`src/protocol/peer.rs:270-272`）同样的“只用关键帧”路径。
-- Windows 以外由 `HDR_SUPPORTED` 保证不请求 HDR，解码器声明仍按探测结果发送（§5.5）。
+- 主控 HELLO 特性（`controller_features`，`src/protocol/peer.rs:244-264`）：保留 `display.config`、`display.virtual`（请求 Windows 被控改分辨率、建虚拟屏，界面与协议逻辑共用）、`cursor.participants`。M1 已在 Windows 以外去掉 `touch`、`pen`（测试 `controller_advertises_native_pointers_only_on_windows`，`src/protocol/peer.rs:394`）以及 `clipboard`、`clipboard.files`、`files`（后三项在被控 HELLO 中也已去掉）。设备注册不再宣告 `files`，其余注册能力清空留给 M2。Mac 默认不声明 `video.recovery`，走只用关键帧的恢复路径；`dev video --recovery` 可在 V3 中显式声明，Windows 默认行为不变（§5.4）。
+- Windows 以外由 `HDR_SUPPORTED` 保证不请求 HDR，解码器声明仍按探测结果发送（§5.2）。
 - Mac 首版不查询更新；现有调用随设备中心只在 Windows 编入（`src/application/app/updates.rs:211`）。
 
 ### 3.3 本地数据与日志
@@ -299,28 +299,42 @@ transport/rtc/receive.rs → transport/video_receiver/*
 
 ### 5.2 解码能力声明
 
-- 主控在建会话时调用 `detect_native_decoder_support`（`src/media/decoder/mod.rs:559`，调用处 `src/transport/signal/mod.rs:397`），得到 `session::Decoder { codec, chroma444, bit10, width, height, hardware, av1_visible_size }`（`crates/protocol/src/session.rs:46`）列表。软件 H.264 的上限写死为 1920×1080，含 4:4:4（`src/media/decoder/mod.rs:577-590`）。
-- Mac 上的硬件项按探测结果生成：对每个编码格式、位深、色度先查 `VTIsHardwareDecodeSupported`，再按目标参数实际创建一次 `VTDecompressionSession` 确认。不按机型写死（例如“M3 及以上支持 AV1”不保证所有 profile 和分辨率）。
-- 软件项：H.264 保留；aarch64 上 AV1 软件解码不存在，不声明。
-- 被控据此协商；能力不足时降级到 H.264 的路径是现有逻辑。
+- T2c 已完成。主控在发送 `session.start` 前调用 `detect_native_decoder_support`（`src/media/decoder/mod.rs`，调用处 `src/transport/signal/mod.rs`），得到 `session::Decoder { codec, chroma444, bit10, width, height, hardware, av1_visible_size }` 列表。可在 `Decoder probe` 线程预探测并缓存；建会话时同步等待进行中的探测或补做探测，不带未确认的能力发请求。
+- Mac 硬件项按真帧探测，不按机型写死。先查 `VTIsHardwareDecodeSupported`，再用对应 fixture 的首帧在要求硬件解码的 VT session 中解码，核对唯一输出、token、尺寸、IOSurface、像素格式和样点。每个编码 / 色度 / 位深组合按 3840×2160、2560×1440、1920×1080 试探，只声明首个通过的尺寸；缺素材或未通过均不声明。
+- 软件项：H.264 声明上限沿用 1920×1080，8 位含 4:2:0 与 4:4:4；aarch64 没有 AV1 软件解码，不声明。被控按现有逻辑协商，能力不足时可降级到 H.264。
+
+Apple M4 / macOS 15.6 仓库外 harness 实测（通过项均测到 3840×2160，格内为输出像素格式）：
+
+| 编码 | 4:2:0 8 位 | 4:2:0 10 位 | 4:4:4 8 位 | 4:4:4 10 位 |
+|---|---|---|---|---|
+| H.264 | `420v` | 无 fixture，不声明 | `444v` | 无 fixture，不声明 |
+| HEVC | `420v` | `x420` | `444v` | `x444` |
+| AV1 | `420v` | `xf20`（全范围素材） | VT 拒绝 `-12910` | VT 拒绝 `-12910` |
+
+全量枚举约 160–240 ms（留存日志为 175.518–236.120 ms），不是实测的建连增量。其他 Mac 型号（如无 AV1 硬解的 M1）未实测，见 [自测记录](../selftest-results.md)。
 
 ### 5.3 VideoToolbox 解码器
 
 - 新增 `platform::macos::decoder`，实现与 `WindowsVideoDecoder` 相同的解码接口（`media::decode_api`）。
 - 格式描述：H.264 用 SPS/PPS（`CMVideoFormatDescriptionCreateFromH264ParameterSets`），HEVC 用 VPS/SPS/PPS（`...FromHEVCParameterSets`），AV1 用 `av1C`。可以参考 commit `572014b` 删除前的 `src/decoder/platform/apple/videotoolbox/{format_desc,hevc_config,video}.rs`（`git show 572014b^:<路径>`），那时的架构不同，只借鉴参数集处理。
-- 输出：要求 IOSurface 支撑的 `CVPixelBuffer`（`kCVPixelBufferIOSurfacePropertiesKey`），8 位用 `420v` 双平面，10 位用对应的双平面 10 位格式；参数集变化时重建 session。
+- 输出：要求 IOSurface 支撑的 `CVPixelBuffer`（`kCVPixelBufferIOSurfacePropertiesKey`），按色度、位深和码流范围选择双平面格式（实测见 §5.2）；解码格式变化时重建 session。
 - 失败与回退沿用 `DecoderPool` 的候选顺序：硬件失败时换软件 H.264；软件也不支持时报不支持。
 
 ### 5.4 共用层改动（A1–A3）
 
-- A1：`VideoDecoderConfig.gpu_device` 改为平台层定义的设备句柄类型（Mac 上为 `MTLDevice` 的包装或不需要）。
-- A2：`DecodedFrame.surface` 改为 `platform::surface::Surface`（Windows 上即现有的 `D3D11Surface`，Mac 上是持有 `CVPixelBuffer` 的类型）；`DecoderCandidate` 的硬件项按平台枚举；`decoder_pool.rs:34` 的 writer、`media/decoder/diagnostics.rs` 的 D3D11 探测移入平台层。
-- A3：软件解码槽见 §3.5。
+- A1 已完成：`VideoDecoderConfig.gpu_device` 改用平台的 `GpuDevice`；Windows 仍为 `ID3D11Device`，Mac 传 `None`，由 VideoToolbox 选择设备。
+- A2 已完成：`DecodedFrame.surface` 和 pool 的 writer 改用 `platform::surface::{Surface, SurfaceWriter}`；Windows 仍为 D3D11 类型，Mac 的 surface 持有 IOSurface 支撑的 `CVPixelBuffer` 或软件解码的 CPU 帧。硬件候选按平台选择；D3D11 诊断仅在 Windows 编入，能力的枚举和素材共用。
+- A3 已在 M2 完成：跨进程软件解码槽见 §3.5；Mac 的 H.264 软件解码可作为硬件回退。
+- `luma_hash`：Mac 的硬解与软解都只 hash 可见区的 Y 样本；H.264 4:2:0、4:4:4 的 hw/sw 一致已实测。4:2:0 的 hash 字节口径与 Windows 一致（按代码核对，未做双机比对）；4:4:4 不可比，Windows hash 的是 packed 像素而不只是 Y。
+- AV1 起解（含重置后）要求待显示的关键帧 AU 带内含有 sequence header。按代码核对，Windows 被控的 NVENC 设置 `repeatSeqHdr`，AMF 在关键帧插入序列头，QSV 由 oneVPL GPU Runtime 对 I 帧写入序列头；未抓包确认各编码器实际发出的码流。
 
-**V3【待测】恢复帧：** Windows 被控对声明 `video.recovery` 的主控会发长期参考恢复帧，H.264 下会出现 `frame_num` 跳号（`docs/protocol/rfi-ltr-brief.md`）。在 Mac 端用 `dev video --loss` 注入丢包，看 VT 解码器能否在恢复帧后输出正确画面：
+**V3【待测】恢复帧：** Windows 被控在支持长期参考恢复的流上，对声明 `video.recovery` 的主控可以发恢复帧；H.264 下会出现 `frame_num` 跳号（`docs/protocol/rfi-ltr-brief.md`）。等整库可编译后，在 Mac 端对同一 Windows 被控、同一码流设置做 A/B，确认实际走 H.264 的 VT 硬解：
 
-- 能：声明 `video.recovery`；
-- 不能：H.264 暂不声明（被控按关键帧恢复），或恢复期间切到软件 H.264，按实测再定。
+1. 实验组：`dev video --device-id <ID> --codec h264 --recovery --loss 'frame:300,every=120'`。
+2. 对照组：`dev video --device-id <ID> --codec h264 --no-recovery --loss 'frame:300,every=120'`，只用关键帧恢复。
+3. 先确认实验组的 JSON 报告中 `recovery_declared` 为 `true` 且 `recovered_by.recovery > 0`，再判断恢复后的画面是否正确；未走到恢复帧路径不能算 V3 通过。`--recovery-late` 只改请求时机；若测晚请求，Mac 上需与 `--recovery` 同用。
+
+通过后改 `src/protocol/peer.rs` 的 `RECOVERY_DECLARED` 初值即可让 Mac 默认声明；未通过则继续默认不声明，是否在恢复期间切到软件 H.264 按实测再定。
 
 ### 5.5 上屏
 
@@ -349,15 +363,17 @@ M6 前，观看窗口的呈现、Windows 输入模块与快捷键只在 Windows 
 
 ### 6.1 现状
 
-- 共用的状态机：`src/features/remote_input.rs`。鼠标模式 `MouseMode { View, Smart, Local, Remote }`（`:56-62`，默认智能，`src/features/viewing_settings.rs:83`）；按键入口 `key(owner, usage, down)`（`:457`），锁定键 `sync_locks`（`:497`），系统命令 `system_command`（`:429`）；按住的键集合、统一释放、心跳与超时都在这里。
+- 共用的状态机：`src/features/remote_input.rs`。鼠标模式 `MouseMode { View, Smart, Local, Remote }`（`:56-62`，默认智能，`src/features/viewing_settings.rs:83`）；按键入口 `key(owner, usage, down)`（`:457`），锁定键 `sync_locks`（`:497`），系统命令 `system_command`（`:429`）；按住的键集合、统一释放与主控心跳判断在这里；静默超时释放在被控端（§6.2）。
 - 线上按键是 HID usage（`docs/protocol/peer-messages.md:44`）。Windows 主控按 set-1 扫描码查表得到 usage，表在 `src/platform/windows/input/keyboard.rs`（`usage()` / `scan()` 在 `:171-180`，覆盖 ISO、JIS、LANG1/2 等）。
 - 平台部分：`windows_keyboard.rs`（低级钩子，窗口在前台时安装）、`windows_mouse.rs`（raw input、限制光标）、`windows_cursor.rs`（光标形状）、`windows_drag.rs`。
 
 ### 6.2 HID 表移到共用层
 
-- 把“HID usage 是否合法、是否修饰键、锁定键序号”这些判断（`remote_input.rs:15` 引用的 `keyboard::{scan, lock_index, modifier, LOCKS, KEYBOARD}`）移到共用模块（如 `features::remote_input::keys`）。Windows 的扫描码 ↔ usage 表留在 Windows 平台层。
-- 按键超时计时器（`remote_input.rs:309`、`:337` 的 `platform::windows::input::deadline`）改为平台层的计时接口；Mac 上用 `tokio` 计时或 `dispatch` 计时器。
-- Windows 主控行为不变：同一组 usage 能发出去，同一组被拒绝。
+M4 已完成（双机验收待整库可编译）：
+
+- HID usage 合法性、修饰键、锁定键序号移到 `features::remote_input::keys`。Windows 的 set-1 扫描码 ↔ usage 表留在平台层；共用 allowlist 与该表接受的 145 个 usage 一致。`dev input` 的美式布局字符和键名直接映射到 HID usage，不经 Windows 扫描码。
+- 鼠标移动节流计时器走平台接口：只有启用鼠标节流、队首是移动事件且允许发送的时刻未到时才 arm；到时只唤醒 `RemoteInput::next()` 重新检查，不直接发送事件或释放按键。Windows 仍用原生 waitable timer；Mac 用 Tokio 一次性计时器，输入发送任务须运行在启用了 time 驱动的 Tokio runtime 上。
+- 按住键时的心跳检查由主控发送循环的 15 ms tick 驱动（`src/transport/rtc/channels.rs`），不由节流计时器驱动；输入静默超时释放按键由被控端处理（`src/features/host/input/engine.rs`）。
 
 ### 6.3 Mac 键盘
 
@@ -471,7 +487,7 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 |---|---|---|
 | Windows 回归 | 共用层改动多，Mac 上验证不到 Windows 行为 | 每一步单独提交；Windows `cargo build --release`、`cargo fast-test --lib` 和对应清单条目通过后再提交 |
 | `features::host` 拆分形状与上游冲突 | 做法 B 改动 `AuthenticatedClient` 与被控模块根；Linux 主控 PR #33 选的是做法 A | 已在 #34 提问，回复前不动；拆分只移动代码、不改行为 |
-| VT 对恢复帧的处理 | 不行的话丢包恢复变慢 | 先不声明 `video.recovery`；按 V3 结果再定 |
+| VT 对恢复帧的处理 | 不行的话丢包恢复变慢 | Mac 默认不声明 `video.recovery`；用 `dev video --recovery` 实测 V3 后再定（§5.4） |
 | aarch64 上没有 AV1 软件解码 | 硬件不支持 AV1 的 Mac 收不了 AV1 | 如实声明，协商自动避开 |
 | `farwing_h264` 在 aarch64 上只有标量路径 | 软件兜底撑不住高分辨率或高帧率 | 软件 H.264 的声明上限沿用 1920×1080；做基准（V7）后再定是否写 NEON |
 | 渲染后端选择 | 自写后端工作量大，现成后端可能有拷贝 | M8 用数据决定，先跑通 |
@@ -486,7 +502,8 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 | 文档说法 | 代码事实 |
 |---|---|
 | `README.md`、`docs/client-usage.md` 标题：客户端只有 Windows | 实现后补 macOS 的构建与使用说明（`client-usage.md` 增加 macOS 一节或另起一份） |
-| `docs/protocol/peer-messages.md:78`：映射表在 `src/platform/windows/input/keyboard.rs` | §6.2 之后，usage 判断在共用层，Windows 扫描码表仍在该文件；同步修改此句 |
+| `docs/protocol/peer-messages.md` 的 INPUT 曾把扫描码查表概括为主控通用路径 | §6.2 之后，Windows 原生键盘仍查 set-1 表，`dev input` 直接映射到 HID usage，合法性共用 allowlist；已同步 INPUT 一节 |
+| `docs/client-usage.md` 的 `dev video` 示例以 Windows 客户端为准 | Mac 默认不声明 `video.recovery`；`--recovery` 仅在 Mac 提供，且与 `--no-recovery` 互斥。Mac 的 V3 步骤见 §5.4 |
 | `docs/protocol/web-control-brief.md`、`rfi-ltr-brief.md`：“原生”指 Windows 客户端主控 | 实现后“原生主控”包括 Mac；相关结论按平台复核 |
 | `build.rs:4-5` 的断言信息：“other platform backends were removed” | 指 v0.3.0（`572014b`）删除的 Linux / Apple 解码器；本工作重新引入 macOS 后端 |
 | `docs/dev/identity.md` | M0 已登记 macOS bundle id；M2 补了数据、日志目录与锁文件；Keychain 服务名实测与 socket 路径随 M2 凭据、M5 单实例补齐 |
@@ -500,8 +517,8 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 | M0 | 开发机安装 Rust 1.95.0 和 Xcode 命令行工具；Mac CI 在 macOS 开发分支用 Rust 1.95.0 跑 `cargo check --locked --target aarch64-apple-darwin`（编译阻断归 M1）；独立开发签名 `.app` 骨架；§8.3 的权限判别 | 骨架可组装且通过严格签名校验（已验证）；GitHub CI 实际日志、§8.3 真机权限结果待补 |
 | M1 | 构建：§1 的依赖、`build.rs`、`lib.rs`、命令取舍；§2 的被控运行时按平台编入、共享类型搬出；平台层建立 `macos` 目录并只导出已实现的模块 | Mac `cargo check` 通过；Windows 构建与回归通过，行为不变 |
 | M2 | 命令行登录：§3 的平台身份、空能力集合、硬件信息、数据与日志目录、Keychain；`Server`、`Login`、`Devices`、`Friend`、`Grant`、`Sessions` | 签名 `.app` 内的二进制能设置服务器、登录、列设备；Windows 主控的设备列表里这台 Mac 显示为 macOS、不可连接；登出后 Keychain 清理 |
-| M3 | 无窗口解码：§5.2–§5.4（A1–A3、VT 解码器、能力探测、软件槽）；`dev video` | Mac `dev video` 连 Windows 被控：H.264、HEVC（及硬件支持时的 AV1）持续解码，统计与 Windows 主控同量级；V3 结果写回 §5.4 |
-| M4 | 无窗口输入：§6.2（HID 判断移到共用层、计时器）；`dev input` | Mac `dev input` 向 Windows 被控发送脚本键鼠，被控收到的键与 Windows 主控发送的一致 |
+| M3 | 无窗口解码：§5.2–§5.4 的 A1–A3、VT 解码器、能力探测、软件槽已完成 | 待整库可编译：Mac `dev video` 连 Windows 被控，H.264、HEVC（及硬件支持时的 AV1）持续解码，统计与 Windows 主控同量级；V3 结果写回 §5.4 |
+| M4 | 无窗口输入：§6.2 的共用 HID 判断、计时器与 `dev input` 已完成 | 待整库可编译：Mac `dev input` 向 Windows 被控发送脚本键鼠，被控收到的输入与 Windows 主控发送的一致 |
 | M5 | 设备中心窗口：§3.5–§3.6、§4（事件循环、egui 呈现、标题栏、菜单、托盘、字体、语言、单实例）；§7.3 接回文字聊天 | 从 Finder 启动，GUI 登录、设备列表、好友、授权、设置页可用；第二次启动激活第一个实例；托盘菜单可用 |
 | M6 | 观看窗口：§5.5（视频层、渲染线程、多屏窗口、全屏）、§6.3–§6.5（键盘、鼠标、光标、快捷键）；断线重连 | Mac → Windows：H.264 SDR 1080p60 可看可控；左右修饰键、CapsLock、失焦与断线后按键释放；Cmd/Ctrl 映射与系统命令菜单；相对鼠标；性能门槛见下 |
 | M7 | 声音与麦克风：§7.1–§7.2 | 被控声音播放、音画同步；麦克风送往被控（被控装有虚拟声卡时）；拒绝麦克风授权时观看不受影响 |
@@ -518,6 +535,9 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 |---|---|
 | M0 | 包装脚本、测试和开发分支 CI 已配置；本机 Apple Development 签名、严格验签、标识符和证书核对通过。开发机已有 Xcode 命令行工具，Rust 1.95.0 装在仓库外的隔离目录；未实际运行 GitHub workflow，权限判别待验（§8.3）。 |
 | M1 | §1.1–§1.2 构建层、§2.3 共享项迁移及 §1.3 命令取舍已完成。剪贴板、文件传输、拖放、插件、语音与通话、Windows 观看窗口及输入、设备中心和启动器均按平台编入；Mac 不声明 `touch`、`pen`，不请求 HDR。`cargo check` 仍停在 `farwing` 库，M1 结束时本机与 CI 均剩 265 个错误，Windows CI 构建与库测试通过（见 `docs/selftest-results.md`）。§2.1–§2.2 被控运行时拆分待 [#34](https://github.com/djkcyl/farwing/issues/34) 回复后定。验收条件“Mac `cargo check` 通过”要等拆分及 M2–M4、M9 中对应的阻断清完。 |
-| M2 | 不依赖被控拆分的部分已完成：§3.3 数据与日志目录、§3.6 系统语言、§3.5 presence 与软件解码槽的 `flock`、§3.1 本机平台与硬件信息、命令行隐藏密码输入（`b356657`–`aa1517d`）。Windows CI 通过，Mac 检查 265 → 237，剩余分类见 `docs/selftest-results.md` 最后一节。§3.2 空能力集合与直连被控能力拆分已完成（`b53daab`；Mac 检查 237 → 236，`--tests` 239 → 237；Windows CI 构建与库测试通过）。待做：§3.4 凭据 vault 分支（Windows 本机后台服务的分支，随 #34 问题 1 的边界一起定）、Keychain 实测，以及验收所需的签名 `.app` 内命令行登录（要等库与 bin 能编译）。 |
-| M3 | 进行中。A1–A2 共用解码层改用平台类型（Windows 只加别名），以及 Mac 本机显示探测（主屏物理像素，刷新率取各活动屏最高值）已提交（`64a641f`）。Mac 检查 236 → 235，`--tests` 237 → 236。Windows CI 待跑。下一步做 VideoToolbox 解码器、软件 H.264 路径和硬件能力探测。本轮验收用仓库外 harness 解码真实码流；`dev video` 连 Windows 被控和 V3 要等库能编译。 |
-| M4–M9 | 未开始 |
+| M2 | 不依赖被控拆分的部分已完成：§3.3 数据与日志目录、§3.6 系统语言、§3.5 presence 与软件解码槽的 `flock`、§3.1 本机平台与硬件信息、命令行隐藏密码输入（`b356657`–`aa1517d`）。Windows CI 通过，Mac 检查 265 → 237，当时的剩余分类见 `docs/selftest-results.md` 的 M2 数据目录一节。§3.2 空能力集合与直连被控能力拆分已完成（`b53daab`；Mac 检查 237 → 236，`--tests` 239 → 237；Windows CI 构建与库测试通过）。待做：§3.4 凭据 vault 分支（Windows 本机后台服务的分支，随 #34 问题 1 的边界一起定）、Keychain 实测，以及验收所需的签名 `.app` 内命令行登录（要等库与 bin 能编译）。 |
+| M3 | A1–A3、Mac 本机显示探测、VideoToolbox 解码、H.264 软件回退、能力探测与软件槽已完成（§5.2–§5.4），仓库外 harness 已解码真实码流。`dev video` 连 Windows 被控与 V3 待整库可编译；Windows CI 待推 fork 后跑。 |
+| M4 | §6.2 的共用 HID 判断、鼠标移动节流计时器与 `dev input` 已完成，仓库外 harness 通过。双机接收侧验收待整库可编译；Windows CI 待推 fork 后跑。 |
+| M5–M9 | 未开始 |
+
+M3/M4 合入后，Mac 整库 `cargo check` 仍剩 227 个错误（`--tests` 的 `lib test` 228 个），主要是被控代码及后台服务边界（[#34](https://github.com/djkcyl/farwing/issues/34)），另有诊断与网络等遗留。各步实测及未验证项见 [自测记录](../selftest-results.md)。

@@ -75,7 +75,8 @@ InputMessage { oneof kind {
 enum SystemCommand { UNSPECIFIED = 0; SAS = 1 /* Ctrl+Alt+Del，需要被控服务 */; LOCK = 2; TASK_MANAGER = 3; SHOW_DESKTOP = 4; TASK_VIEW = 5 }
 ```
 
-- 主控按物理键的 set-1 扫描码（E0 扩展键记为 `0xE0xx`）查表得到 usage；被控有 HID 驱动时直接上报 usage，否则按扫描码注入。映射表在 `src/platform/windows/input/keyboard.rs`。不认识的 usage 被忽略。
+- Windows 主控采集原生键盘时，按物理键的 set-1 扫描码（E0 扩展键记为 `0xE0xx`）查表得到 usage，表在 `src/platform/windows/input/keyboard.rs`。`dev input` 脚本则在 `src/application/dev_input.rs` 将字符和键名直接映射为 HID usage，不经过扫描码。
+- 主控用 `src/features/remote_input/keys.rs` 的共用 allowlist 判断 usage 是否可发送。被控有 HID 驱动时直接上报 usage，否则按扫描码注入；不认识的 usage 被忽略。
 - `LockState` 的纠正规则见 v2-design §7；保活与按键释放超时见 farwing-protocol.md §5.8。
 
 ## CURSOR（0x0103，被控→主控）—— `src/features/remote_cursor.rs`、`src/protocol/participants.rs`

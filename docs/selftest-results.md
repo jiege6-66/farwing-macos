@@ -2056,3 +2056,56 @@ Mac 上新增的三项测试（`platform::macos::locks` 的两项、`platform::m
 | fork CI `macos-check.yml`（`macos-15` arm64，[46109252713](https://github.com/jiege6-66/farwing-macos/actions/runs/46109252713)） | 按预期失败，236 个错误、1 个 warning，232 个报错主位置与本机完全一致 |
 
 `peer.rs` 新增的非 Windows 测试要等库能编译后才能运行。Windows 主控界面里这台 Mac 的显示与可操作性（简报 §3.2 末段）未实测，属于 M2 验收内容。
+
+## macOS 主控：M3 无窗口解码、M4 无窗口输入与恢复帧开关（2026-11-28）
+
+**结果：本机整库检查由 236/237 降到 227/228 个错误，仍未通过；仓库外 harness 通过（含本机 VT 硬解）。** 记录 `9148e02` → `8160fe3`，追溯 M2 检查作为基线；起点 `9148e02` 已包含 T1 的 A1–A2（`64a641f`）。本机为 Apple M4、macOS 15.6；日志在 `/Volumes/OUTSIDE/dev-tools/farwing/tmp/`。实现与双机验收条件见 [macOS 主控简报](protocol/macos-controller-brief.md) §5.2–§5.4、§6.2。
+
+### 本机整库 check
+
+使用 Rust 1.95.0 的 `cargo check --locked --target aarch64-apple-darwin`（含 `--message-format short`），另跑一遍加 `--tests`。下表按合入顺序累计；斜线左右分别是 rustc 汇总的 `lib` 和 `--tests` 下的 `lib test` 错误数，不相加。
+
+| 步 | 累计错误数 | 日志与变动 |
+|---|---:|---|
+| 基线 | 236/237 | 上一节的 `m2-caps.log`、`m2-caps-tests.log` |
+| T1（A1–A2、显示探测及修正） | 235/236 | `m3-t1.log`、`m3-t1-tests.log`；后续 T1 修正（`88ee659`）不再改变错误数，见 `m3-t1-fix-location-diff.log` |
+| T2a 码流 / `video.recovery` 开关 | 235/236 | `m3-t2a-fix-location-diff.log`、`m3-recovery-location-diff.log`，无新增报错位置 |
+| M4 无窗口输入 | 231/232 | `m4-location-diff.log`、`m4-review-fix-macos-tests.log`，移除脚本输入与 `RemoteInput` 的 4 处 Windows 导入报错；`m3m4-merge-location-diff.log` 与 M4 收尾检查一致 |
+| T2b VT 解码与 surface | 227/228 | `m3-t2b-location-diff.log`、`m3-t2b-fix-location-diff.log`，移除缺 `decoder` / `surface` 的 4 处报错；此行将这 4 处计入 M4 后的结果，不是 T2b 独立分支的读数 |
+| T2c 能力探测及最终合入 | 227/228 | `m3-t2c-fix-location-diff.log`、`m3-t2c-rebase-location-diff.log` 无新增位置；最终以 `m3m4-final-merge-macos-check.log`、`m3m4-final-merge-macos-tests.log` 为准 |
+
+M4 和 T2b 的分步整库日志各自从 235/236 降到 231/232，消失的是不同位置；T2c 在未带 M4 的分支上复测仍为 231/232。227/228 是两组改动合入后直接测到的数（`m3m4-final-merge-location-diff.log`），仍有 1 个既有 warning。余下主要是被控运行时与后台服务边界（上游 [#34](https://github.com/djkcyl/farwing/issues/34)），也有诊断与网络等遗留；尚未到 `main.rs` 的类型检查。
+
+### 仓库外 harness（本机，未建会话）
+
+| 步 | 结果 |
+|---|---|
+| T1 | 标签与共用能力枚举等 10 项、显示探测 6 项均通过。真机主屏取物理像素 2940×1912，刷新率取活动屏最高值 240 Hz（主屏 60 Hz，外接屏 240 Hz），后台线程可读取（`m3-t1-fix-harness-green.log`、`m3-t1-fix-display-native.log`） |
+| T2a | 40 组 fixture 的查表和首帧提取与旧路径一致。码流准备覆盖 H.264/HEVC Annex-B、AV1 OBU、参数集事务更新、非法输入和分辨率切换；36 项通过，另 1 项用 FFmpeg 生成的多帧码流单独运行通过（`m3-t2a-fixtures-green.log`、`m3-t2a-bitstream-green.log`、`m3-t2a-fix-green.log`）。这一步不调用 VT |
+| `video.recovery` | 默认 HELLO 不声明；`--recovery` 可显式开启，和 `--no-recovery` 互斥。8 项通过，改进程全局开关的 CLI 分派及帮助测试单独运行通过；帮助说明 `--recovery-late` 需配 `--recovery`（`m3-recovery-help-fix.log`）。未验证恢复帧解码 |
+| M4 | 33 项通过，含输入报文编码、脚本键鼠序列与 `dev input` 表驱动回归：97 个字符、66 个键名/别名、F1–F12。节流计时器同刻且任务仍待触发时复用；触发后即使旧任务未结束也可同刻重挂，runtime 停止后换 runtime 也可重挂；`disarm` / `Drop` 和通知串行化，不在取消后再发通知。7 项计时测试重复 50 轮全过（`m4-review-fix-fixtures.log`、`m4-review-fix-macos-harness.log`、`m4-review-fix-deadline-repeat.log`） |
+| T2b | 修正后 51 项通过（`m3-t2b-fix-green.log`）。所测 VT 码流同步解码成立，未观察到延迟回调；每个提交的 token 立即只有一个终态（出帧或丢弃）。H.264、HEVC、AV1 切分辨率均重建 session；HEVC 开放 GOP 从 CRA 切入丢弃 3 个关联 RASL。从流首开始不丢这些 RASL。H.264 4:2:0 和 4:4:4 各自的 VT / 软件 `luma_hash` 均为 `27bb1aabcc8cace6`；`x420`/`x444` 的 10 位 Y 样本实测为 16 位字的 MSB 对齐（原始字 `0x3fc0` / `0xc040`，参考亮度 255 / 769；`m3-t2b-fix-alignment-reference.log`） |
+| T2c | rebase 后 55 项通过，含真帧能力矩阵、探测失败分级、共享样点校验与 T2b 回归（`m3-t2c-rebase-harness.log`、`m3-t2c-rebase-matrix.log`）。按首帧能否实际硬解并通过输出校验来声明，不只看 VT 的 codec 查询 |
+
+Apple M4 / macOS 15.6 的 VT 真机矩阵（通过项均测到 3840×2160；表内为输出像素格式）：
+
+| 编码 | 4:2:0 8 位 | 4:2:0 10 位 | 4:4:4 8 位 | 4:4:4 10 位 |
+|---|---|---|---|---|
+| H.264 | `420v` | 无 fixture，未验证 | `444v` | 无 fixture，未验证 |
+| HEVC | `420v` | `x420` | `444v` | `x444` |
+| AV1 | `420v` | `xf20`（全范围素材） | VT 创建 session 拒绝 `-12910` | VT 创建 session 拒绝 `-12910` |
+
+全量枚举约 160–240 ms（`m3-t2c-green-all.log` 的 175.518 ms 至 `m3-t2c-rebase-harness.log` 的 236.120 ms；单测重跑 `m3-t2c-rebase-matrix.log` 为 186.531 ms）。代码中的预探测走 `Decoder probe` 线程，发送 `session.start` 前同步等结果或补做探测；harness 计时不含建连。
+
+### Windows 交叉检查与代码比对
+
+- **仅 harness 级交叉检查：** `cargo check --locked --target x86_64-pc-windows-msvc --tests` 通过，日志为 `m3-t1-fix-windows-harness.log`、`m3-t2a-fix-windows-harness.log`、`m3-recovery-windows-harness.log`、`m4-review-fix-windows-harness.log`、`m3-t2b-fix-windows-harness.log`、`m3-t2c-rebase-windows-harness.log`。没有运行 Windows 测试二进制，也不代表整库或 CI 通过。
+- **视频代码比对：** Windows DXVA11 标签、能力枚举和依赖树不变（`m3-t1-fix-windows-compare.log`、`m3-t2a-windows-tree-diff.log`）；共享样点后，Windows 诊断中英文的 6048 个结果/错误字符串比对一致（`m3-t2c-rebase-harness.log`、`m3-t2c-rebase-windows-compare.log`）。4:2:0 `luma_hash` 字节口径与 Windows 一致；4:4:4 不可比，Windows hash packed 像素，Mac 只 hash Y（按代码核对）。AV1 关键帧 AU 的带内 sequence header 按 NVENC、AMF 与 QSV/oneVPL 代码核对，未抓包（`m3-t2b-av1-host-contract.log`）。
+- **recovery 代码比对：** Windows 的 CLI 参数、帮助和分派在按 `cfg` 投影后逐字不变，仍默认声明恢复特性（`m3-recovery-windows-compare.log`）。
+- **输入表比对：** 共用 allowlist 的 145 个 usage 与 Windows set-1 表一致，含别名；脚本映射结果与原先的扫描码路径一致，Windows 原生 set-1 表和 waitable timer 不变（`m4-windows-compare.log`、`m4-review-fix-fixtures.log`）。这是本机比对，不是 Windows 注入验证。
+
+### 未验证
+
+- 本轮 Windows CI 尚未跑（待推 fork）；Windows 原生库测试未运行，包括 `shared_allowlist_matches_scan_for_every_usage`。
+- 双机 `dev input` 的 Windows 接收侧比对、Mac → Windows `dev video` 端到端和 V3 恢复帧 A/B 待整库可编译；未执行相应手动清单。
+- 未测休眠后真实的 VT `InvalidSession`，也未在其他 Mac 型号上跑能力矩阵（如没有 AV1 硬解的 M1）。
