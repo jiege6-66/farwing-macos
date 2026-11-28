@@ -12,6 +12,8 @@ use farwing_protocol::session::Decoder;
 
 #[cfg(windows)]
 pub(crate) mod diagnostics;
+
+pub(crate) mod fixtures;
 mod hardware_probe;
 pub(crate) mod software_slot;
 

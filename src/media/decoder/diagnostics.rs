@@ -1,5 +1,5 @@
 //! Exhaustive current-backend checks. No automatic candidate or adapter fallback.
-use super::software_slot::SoftwareSlot;
+use super::{fixtures, software_slot::SoftwareSlot};
 use crate::media::decode_api::{DecoderMode, DecoderNotification, VideoDecoderConfig};
 use crate::media::{LocalDisplayInfo, VideoCodec};
 use crate::platform::{
@@ -36,58 +36,7 @@ impl Format {
         )
     }
     fn sample(self, size: (u32, u32)) -> Option<&'static [u8]> {
-        macro_rules! sample {
-            ($name:literal, $extension:literal) => {
-                match size {
-                    (1280, 720) => Some(
-                        include_bytes!(concat!("fixtures/matrix/", $name, "_1280x720", $extension))
-                            .as_slice(),
-                    ),
-                    (1920, 1080) => Some(
-                        include_bytes!(concat!(
-                            "fixtures/matrix/",
-                            $name,
-                            "_1920x1080",
-                            $extension
-                        ))
-                        .as_slice(),
-                    ),
-                    (2560, 1440) => Some(
-                        include_bytes!(concat!(
-                            "fixtures/matrix/",
-                            $name,
-                            "_2560x1440",
-                            $extension
-                        ))
-                        .as_slice(),
-                    ),
-                    (3840, 2160) => Some(
-                        include_bytes!(concat!(
-                            "fixtures/matrix/",
-                            $name,
-                            "_3840x2160",
-                            $extension
-                        ))
-                        .as_slice(),
-                    ),
-                    _ => None,
-                }
-            };
-        }
-        match (self.codec, self.chroma, self.depth) {
-            (VideoCodec::Av1, 1, 8) => sample!("av1_8", ".obu"),
-            (VideoCodec::Av1, 1, 10) => sample!("av1_10", ".obu"),
-            (VideoCodec::Av1, 3, 8) => sample!("av1_444_8", ".obu"),
-            (VideoCodec::Av1, 3, 10) => sample!("av1_444_10", ".obu"),
-
-            (VideoCodec::H264, 1, 8) => sample!("h264", ".annexb"),
-            (VideoCodec::H264, 3, 8) => sample!("h264_444", ".annexb"),
-            (VideoCodec::H265, 1, 8) => sample!("hevc", ".annexb"),
-            (VideoCodec::H265, 1, 10) => sample!("main10", ".annexb"),
-            (VideoCodec::H265, 3, 8) => sample!("hevc_444", ".annexb"),
-            (VideoCodec::H265, 3, 10) => sample!("hevc_444_10", ".annexb"),
-            _ => None,
-        }
+        fixtures::sample(self.codec, self.chroma, self.depth, size)
     }
 }
 fn formats() -> Vec<Format> {
@@ -299,39 +248,6 @@ pub(crate) fn run(
     Ok(())
 }
 
-/// Fixtures contain multiple access units; submit the first complete picture,
-/// including all its parameter sets and slices, not the whole stream as one frame.
-fn first_picture(format: Format, data: &[u8]) -> Vec<u8> {
-    if format.codec == VideoCodec::Av1 {
-        return data.to_vec();
-    }
-    let mut out = Vec::new();
-    let mut picture = false;
-    for nal in crate::media::video_format::annex_b_units(data) {
-        let (vcl, first, aud) = if format.codec == VideoCodec::H264 {
-            let kind = nal[0] & 31;
-            (
-                matches!(kind, 1 | 5),
-                nal.get(1).is_some_and(|v| v & 128 != 0),
-                kind == 9,
-            )
-        } else {
-            let kind = (nal[0] >> 1) & 63;
-            (
-                kind <= 31,
-                nal.get(2).is_some_and(|v| v & 128 != 0),
-                kind == 35,
-            )
-        };
-        if picture && ((vcl && first) || aud) {
-            break;
-        }
-        out.extend_from_slice(&[0, 0, 0, 1]);
-        out.extend_from_slice(nal);
-        picture |= vcl;
-    }
-    out
-}
 fn decode_sample(
     format: Format,
     size: (u32, u32),
@@ -339,7 +255,7 @@ fn decode_sample(
     writer: Option<&D3D11SurfaceWriter>,
     cancel: Arc<AtomicBool>,
 ) -> Result<()> {
-    let sample = first_picture(format, sample);
+    let sample = fixtures::first_picture(format.codec, sample);
     let signature = crate::media::video_format::parse_stream_format(format.codec, &sample)
         .context(crate::i18n::t().session.probe_sample_header_invalid)?;
     ensure!(
