@@ -279,11 +279,22 @@ pub(crate) fn controller_recovery() -> bool {
 /// offers synthetic pointers (`docs/protocol/touch-pen-brief.md` §5.4).
 pub(crate) fn host_features() -> BTreeMap<String, u32> {
     let mut features = host_static_features();
-    if crate::platform::windows::input::pointer::available() {
+    if synthetic_pointers_available() {
         features.insert(feature::TOUCH.to_owned(), 1);
         features.insert(feature::PEN.to_owned(), 1);
     }
     features
+}
+
+#[cfg(windows)]
+fn synthetic_pointers_available() -> bool {
+    crate::platform::windows::input::pointer::available()
+}
+
+/// Synthetic touch and pen input exist only on Windows.
+#[cfg(not(windows))]
+fn synthetic_pointers_available() -> bool {
+    false
 }
 
 fn host_static_features() -> BTreeMap<String, u32> {
@@ -390,6 +401,15 @@ mod tests {
         }
     }
 
+    #[cfg(not(windows))]
+    #[test]
+    fn host_omits_touch_and_pen_without_synthetic_pointers() {
+        assert_eq!(host_features(), host_static_features());
+        for name in [feature::TOUCH, feature::PEN] {
+            assert!(!host_features().contains_key(name), "unexpected feature: {name}");
+        }
+    }
+
     #[test]
     fn controller_advertises_native_pointers_only_on_windows() {
         let features = controller_features();
@@ -444,7 +464,7 @@ mod tests {
         // Touch and pen only where synthetic pointers exist.
         assert_eq!(
             received.features().has(feature::TOUCH),
-            crate::platform::windows::input::pointer::available()
+            synthetic_pointers_available()
         );
         assert!(body_of(FrameType::Hello, &response).is_some());
         assert!(body_of(FrameType::Session, &response).is_none());

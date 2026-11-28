@@ -164,6 +164,72 @@ async fn device_init_identity_and_profile_update() {
     srv.shutdown().await;
 }
 
+/// The macOS controller has no host backend and registers an empty
+/// capability list (`docs/protocol/macos-controller-brief.md` §3.2).
+#[tokio::test(flavor = "multi_thread")]
+async fn controller_only_device_registers_without_capabilities() {
+    let srv = start().await;
+    srv.create_user("mia");
+    let pc = srv.account_device("mia", "PC", true).await;
+
+    let installation_id = uuid::Uuid::new_v4().to_string();
+    let mac_body = |key: &DeviceKey| {
+        let mut body = TestServer::init_body(key, "MAC", "macos", false);
+        // A real installation keeps its ID across refreshes.
+        body["installation_id"] = json!(installation_id);
+        body["os"] = json!("macOS 15.6 (24G84)");
+        body["capabilities"] = json!([]);
+        // A policy that accepts sessions: the missing `host` capability still refuses them.
+        body["policy"] = host_policy(true);
+        body
+    };
+    let init = |b: &Value| srv.raw(Method::POST, "/api/v2/devices/init").json(b);
+    let key = DeviceKey::generate();
+    let r = srv.send(init(&mac_body(&key))).await;
+    let mut mac = Dev::default();
+    mac.key = std::sync::Arc::new(key);
+    mac.id = r.ok()["device_id"].as_str().unwrap().to_owned();
+    srv.login(&mut mac, "mia").await;
+
+    // Refreshing with the same empty list keeps the device and the list.
+    let r = srv.send(init(&mac_body(&mac.key))).await;
+    assert_eq!(r.ok()["device_id"], mac.id.as_str());
+    let row = {
+        let id = mac.id.clone();
+        srv.app()
+            .db
+            .call(move |c| farwing_server::db::get_device(c, &id))
+            .await
+            .unwrap()
+            .unwrap()
+    };
+    assert_eq!(row.platform, farwing_protocol::Platform::Macos);
+    assert!(row.capabilities.is_empty());
+    assert!(!row.host_supported());
+
+    // Other devices of the account list it as macOS without capabilities.
+    let v = srv.get("/api/v2/devices", &pc).await.ok().clone();
+    let listed = v["own"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["device_id"] == mac.id.as_str())
+        .unwrap();
+    assert_eq!(listed["platform"], "macos");
+    assert_eq!(listed["capabilities"], json!([]));
+
+    // Online, it still accepts no session.
+    let (_mw, _) = srv.presence(&mac).await;
+    srv.post(
+        "/api/v2/sessions",
+        &pc,
+        json!({"target_device_id": mac.id, "purpose": "desktop"}),
+    )
+    .await
+    .err(409, "host_disabled");
+    srv.shutdown().await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn request_signature_failures() {
     let srv = start().await;

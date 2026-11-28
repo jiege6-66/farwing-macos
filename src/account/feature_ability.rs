@@ -33,11 +33,21 @@ impl Feature {
     }
 }
 
-/// Capabilities this Windows build reports at device registration.
+/// Capabilities this build reports at device registration. Only Windows
+/// builds have a host backend; the macOS controller registers none, so
+/// device lists show it as not controllable.
 pub(crate) fn local_capabilities() -> Vec<String> {
+    if cfg!(windows) {
+        host_capabilities()
+    } else {
+        Vec::new()
+    }
+}
+
+/// Capabilities a Farwing host (the Windows build) reports at registration.
+pub(crate) fn host_capabilities() -> Vec<String> {
     [
         name::HOST,
-        #[cfg(windows)]
         name::FILES,
         name::PORTS,
         name::POWER,
@@ -96,11 +106,12 @@ pub(crate) struct FeaturePolicy {
 }
 
 impl FeaturePolicy {
-    /// A host reached directly: a Farwing host of this build
+    /// A host reached directly: a Farwing host of this version, which is a
+    /// Windows build even when this controller is not
     /// (`docs/protocol/v2-design.md` §12).
     pub(crate) fn direct() -> Self {
         Self {
-            capabilities: local_capabilities(),
+            capabilities: host_capabilities(),
         }
     }
 
@@ -118,10 +129,33 @@ mod tests {
     #[test]
     fn capability_policy() {
         let catalog = FeatureCatalog::default();
-        catalog.remember_target("a1b2c3d4e5f6g7h8", &local_capabilities());
+        catalog.remember_target("a1b2c3d4e5f6g7h8", &host_capabilities());
         let policy = catalog.policy("a1b2c3d4e5f6g7h8");
         assert!(policy.supports(Feature::Ports));
         assert!(policy.supports(Feature::Host));
         assert!(!catalog.policy("unknown").supports(Feature::Power));
+    }
+
+    /// The host at the other end of a direct connection is a Windows host,
+    /// whatever this controller runs on.
+    #[test]
+    fn direct_policy_describes_a_windows_host() {
+        let policy = FeaturePolicy::direct();
+        for feature in [Feature::Host, Feature::Files, Feature::Ports, Feature::Power] {
+            assert!(policy.supports(feature), "{feature:?}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_registers_the_host_capabilities() {
+        assert_eq!(local_capabilities(), host_capabilities());
+    }
+
+    /// Builds without a host backend register as controllers only.
+    #[cfg(not(windows))]
+    #[test]
+    fn controller_only_builds_register_no_capabilities() {
+        assert!(local_capabilities().is_empty());
     }
 }
