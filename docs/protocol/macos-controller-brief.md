@@ -198,11 +198,20 @@ M2 已完成（`510b028`）：
   - `system_uuid` 用 `gethostuuid`，取不到时记入 `errors`、不阻止注册；
   - `machine_guid`（Windows 注册表概念）与 `video` 留空。
 - 本机实测：Mac16,12、Apple M4、16384 MiB、`2940x1912`，`errors` 为空。
-- 设备注册的空能力集合（§3.2）、壁纸发布（`publication.rs` 的 wallpaper 与 resident 分支）以及局域网地址（§8.2）未做。
+- 设备注册的空能力集合见 §3.2；壁纸发布（`publication.rs` 的 wallpaper 与 resident 分支）以及局域网地址（§8.2）未做。
 
 ### 3.2 能力与特性
 
-- 设备注册能力（`local_capabilities`，`src/account/feature_ability.rs:36-49`）：由已编入的后端生成。Mac 首版为空集合。服务端对空集合按 `normalize_capabilities` 处理（`server/src/http/devices.rs:255`）【待测：空集合注册与刷新的行为】。
+- 设备注册能力（`local_capabilities`，`src/account/feature_ability.rs`）：由已编入的后端生成。Mac 首版为空集合。服务端对空集合按 `normalize_capabilities` 处理（`server/src/http/devices.rs:255`、`server/src/db.rs:763`）。
+
+M2 已完成：
+
+- 注册能力与直连被控能力分开：`host_capabilities()` 是 Farwing 被控（Windows 构建）注册的集合；`local_capabilities()` 在 Windows 上等于它，其他平台为空。`FeaturePolicy::direct()`（直连到的被控）改用 `host_capabilities()`：直连对端总是 Windows 被控，与本机平台无关。否则 Mac 直连时 `Host` 判断会关掉会话里的显示设置、麦克风、拓扑等功能，`Files`（在 `stream_control` 中控制手动中转开关）也会缺失（M1 起已缺）。Windows 上两个函数的结果与改动前相同。
+- 被控 HELLO 的 `touch`/`pen` 判断（`host_features`）在 Windows 以外不调用 Windows 的 pointer 接口，结果为不声明。
+- 服务端实测（`server/tests/api.rs` 的 `controller_only_device_registers_without_capabilities`）：`platform: macos`、`capabilities: []` 注册成功，同一密钥刷新后设备 ID 不变、存储仍为空集合；同账号其他设备的设备列表里显示为 `macos`、`capabilities: []`；即使策略为 `control: true` 且在线，发起会话也返回 409 `host_disabled`。
+- 客户端测试：`direct_policy_describes_a_windows_host`、`controller_only_builds_register_no_capabilities`（非 Windows）、`windows_registers_the_host_capabilities`（Windows）、`host_omits_touch_and_pen_without_synthetic_pointers`（非 Windows）。
+
+待 M2 验收时在 Windows 主控上确认（按代码推断，未实测）：这台 Mac 的状态为“受限”（`src/application/app/device_status.rs:100`，`controlled_support` 为假），但下面几处只看 `platform.is_desktop()`，Mac 仍会出现：观看列表与连接页（`show_in_watching_list`，`src/application/app/mod.rs:877`）、观看窗口的切换设备列表（`src/application/viewer/device_switch.rs:106`）、本账号设备详情的电源卡片（`src/application/app/view/device_details.rs:663`）。实际操作分别被服务端（`host_disabled`）或 `src/account/power.rs:28` 拒绝。是否要在这些列表中按 `controlled_support` 过滤，验收时再定。
 - 主控 HELLO 特性（`controller_features`，`src/protocol/peer.rs:244-264`）：保留 `display.config`、`display.virtual`（请求 Windows 被控改分辨率、建虚拟屏，界面与协议逻辑共用）、`cursor.participants`。M1 已在 Windows 以外去掉 `touch`、`pen`（测试 `controller_advertises_native_pointers_only_on_windows`，`src/protocol/peer.rs:394`）以及 `clipboard`、`clipboard.files`、`files`（后三项在被控 HELLO 中也已去掉）。设备注册不再宣告 `files`，其余注册能力清空留给 M2。Mac 首版的 `video.recovery` 等 §5.4 的 V3 通过后再声明，在此之前走现有的 `disable_controller_recovery`（`src/protocol/peer.rs:270-272`）同样的“只用关键帧”路径。
 - Windows 以外由 `HDR_SUPPORTED` 保证不请求 HDR，解码器声明仍按探测结果发送（§5.5）。
 - Mac 首版不查询更新；现有调用随设备中心只在 Windows 编入（`src/application/app/updates.rs:211`）。
@@ -507,5 +516,5 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 |---|---|
 | M0 | 包装脚本、测试和开发分支 CI 已配置；本机 Apple Development 签名、严格验签、标识符和证书核对通过。开发机已有 Xcode 命令行工具，Rust 1.95.0 装在仓库外的隔离目录；未实际运行 GitHub workflow，权限判别待验（§8.3）。 |
 | M1 | §1.1–§1.2 构建层、§2.3 共享项迁移及 §1.3 命令取舍已完成。剪贴板、文件传输、拖放、插件、语音与通话、Windows 观看窗口及输入、设备中心和启动器均按平台编入；Mac 不声明 `touch`、`pen`，不请求 HDR。`cargo check` 仍停在 `farwing` 库，M1 结束时本机与 CI 均剩 265 个错误，Windows CI 构建与库测试通过（见 `docs/selftest-results.md`）。§2.1–§2.2 被控运行时拆分待与上游对齐。验收条件“Mac `cargo check` 通过”要等拆分及 M2–M4、M9 中对应的阻断清完。 |
-| M2 | 不依赖被控拆分的部分已完成：§3.3 数据与日志目录、§3.6 系统语言、§3.5 presence 与软件解码槽的 `flock`、§3.1 本机平台与硬件信息、命令行隐藏密码输入（`b356657`–`aa1517d`）。Windows CI 通过，Mac 检查 265 → 237，剩余分类见 `docs/selftest-results.md` 最后一节。待做：§3.2 空能力集合、§3.4 凭据 vault 分支（与后台服务及上游 issue 的问题 4 相关）、Keychain 实测，以及验收所需的签名 `.app` 内命令行登录（要等库与 bin 能编译）。 |
+| M2 | 不依赖被控拆分的部分已完成：§3.3 数据与日志目录、§3.6 系统语言、§3.5 presence 与软件解码槽的 `flock`、§3.1 本机平台与硬件信息、命令行隐藏密码输入（`b356657`–`aa1517d`）。Windows CI 通过，Mac 检查 265 → 237，剩余分类见 `docs/selftest-results.md` 最后一节。§3.2 空能力集合与直连被控能力拆分已完成（Mac 检查 237 → 236，`--tests` 239 → 237）。待做：§3.4 凭据 vault 分支（与后台服务及上游 issue 的问题 4 相关）、Keychain 实测，以及验收所需的签名 `.app` 内命令行登录（要等库与 bin 能编译）。 |
 | M3–M9 | 未开始 |

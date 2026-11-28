@@ -2036,3 +2036,21 @@ Mac 上新增的三项测试（`platform::macos::locks` 的两项、`platform::m
 | §3.2 | 主控 HELLO 能力判断 | 1 | `src/protocol/peer.rs:282` |
 
 `docs/manual-test-checklist.md` 的条目没有做：Windows 只有代码搬移，没有界面或运行时行为变更；Mac 的命令行登录要等库与 bin 能编译。审查中发现的遗留见简报 §3.3（诊断包的日志路径假设、共用路径里写死 `LOCALAPPDATA` 的文案）和 §9（Ctrl+C 后终端可能不回显）。
+
+## macOS 主控：M2 §3.2 空能力集合之后的检查（2026-11-28）
+
+**结果：Mac 上服务端测试与单文件测试通过；本机 macOS 检查 237 → 236 个错误（`--tests` 239 → 237），没有新增报错位置。Windows 构建与库测试尚未运行（需推送到 fork 触发 CI）。** 对照 `4f648ef`。
+
+- `src/account/feature_ability.rs`：`host_capabilities()` 是 Windows 被控注册的集合，`local_capabilities()` 在 Windows 上等于它、其他平台为空；`FeaturePolicy::direct()` 改用 `host_capabilities()`，Mac 直连 Windows 被控时不再丢掉 `host` 与 `files`。Windows 上两者结果不变。
+- `src/protocol/peer.rs`：被控 HELLO 的 `touch`/`pen` 判断经 `synthetic_pointers_available()`，Windows 以外为假；原 `peer.rs:282` 与测试中 `:447` 的两处报错消失。
+- `server/tests/api.rs`：新增 `controller_only_device_registers_without_capabilities`（简报 §3.2 的服务端结论）。
+
+| 检查 | 结果 |
+|---|---|
+| 服务端 `cargo test --locked --test api`（本机） | 17 项全部通过。新测试先按现有服务端行为通过；临时把注册集合改为 `["host"]` 后，会话一步按预期失败（返回 200 而不是 409），确认测试能发现问题 |
+| `feature_ability.rs` 单文件 harness（仓库外，用 `#[path]` 编入真实文件，`DeviceInfo` 用最小桩） | 先确认 RED：`host_capabilities` 未定义时编译失败；只加别名时 `direct_policy_describes_a_windows_host`（缺 `Files`）与 `controller_only_builds_register_no_capabilities` 失败。实现后 3 项通过；`--target x86_64-pc-windows-msvc` 的 `check --tests` 无报错（含 Windows 专属测试） |
+| 本机 `cargo check --locked --target aarch64-apple-darwin`（Rust 1.95.0） | 237 → 236 个错误，消失的只有 `src/protocol/peer.rs:282`；仍只有 1 个既有 warning |
+| 本机同上加 `--tests` | 239 → 237 个错误，消失的是 `peer.rs:282` 与 `:447`；无新增位置 |
+| 本机整库 `--target x86_64-pc-windows-msvc` 检查 | 无法进行：`ring` 的 C 代码需要 MSVC 头文件 |
+
+`peer.rs` 新增的非 Windows 测试要等库能编译后才能运行。Windows 主控界面里这台 Mac 的显示与可操作性（简报 §3.2 末段）未实测，属于 M2 验收内容。
