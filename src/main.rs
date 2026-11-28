@@ -455,7 +455,7 @@ enum DevAction {
         #[cfg_attr(target_os = "macos", doc = "这是 macOS 的默认行为。")]
         #[arg(long)]
         no_recovery: bool,
-        /// 声明 video.recovery，供 V3 实测
+        /// 声明 video.recovery，供 V3 实测；--recovery-late 只改请求时机，需与本参数同用
         #[cfg(target_os = "macos")]
         #[arg(long, conflicts_with = "no_recovery")]
         recovery: bool,
