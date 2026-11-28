@@ -19,6 +19,7 @@ pub struct Sequence {
     pub level_0: u8,
     pub tier_0: bool,
     pub chroma_sample_position: u8,
+    pub full_range: bool,
     pub reduced_still_picture_header: bool,
 }
 
@@ -121,17 +122,19 @@ impl Sequence {
             (2, 2, 2)
         };
         let mut chroma_sample_position = 0;
+        let full_range;
         let chroma = if mono {
-            b.flag()?; // range; monochrome has no separate_uv_delta_q bit
+            full_range = b.flag()?; // monochrome has no separate_uv_delta_q bit
             Chroma::Monochrome
         } else {
             let sampling = if (primaries, transfer, matrix) == (1, 13, 0) {
                 if profile != 1 && !(profile == 2 && depth == 12) {
                     return Err(Error::Invalid);
                 }
+                full_range = true;
                 Chroma::Yuv444
             } else {
-                b.flag()?; // range
+                full_range = b.flag()?;
                 let (x, y) = match profile {
                     0 => (true, true),
                     1 => (false, false),
@@ -167,6 +170,7 @@ impl Sequence {
             level_0,
             tier_0,
             chroma_sample_position,
+            full_range,
             reduced_still_picture_header: reduced,
         })
     }

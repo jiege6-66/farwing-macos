@@ -224,6 +224,7 @@ fn annex_b_applies_a_standalone_sps_update_without_discarding_pps() {
             sps: new_sps,
             pps: new_pps,
             format,
+            ..
         }) = stream.configuration()
         else {
             panic!("missing Annex-B configuration")

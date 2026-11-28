@@ -69,11 +69,13 @@ pub(crate) enum Configuration {
         sps: Bytes,
         pps: Bytes,
         format: VideoFormatSignature,
+        full_range: bool,
     },
     Av1 {
         /// AV1CodecConfigurationRecord payload, without the atom size/type.
         av1c: Vec<u8>,
         format: VideoFormatSignature,
+        full_range: bool,
         reduced_still_picture_header: bool,
     },
 }
@@ -82,6 +84,12 @@ impl Configuration {
     pub(crate) fn format(&self) -> VideoFormatSignature {
         match self {
             Self::AnnexB { format, .. } | Self::Av1 { format, .. } => *format,
+        }
+    }
+
+    pub(super) fn full_range(&self) -> bool {
+        match self {
+            Self::AnnexB { full_range, .. } | Self::Av1 { full_range, .. } => *full_range,
         }
     }
 }
@@ -103,6 +111,7 @@ struct Parameter {
     nal: Bytes,
     parent_id: u32,
     format: Option<VideoFormatSignature>,
+    full_range: bool,
     avc_pps_chroma444: Option<bool>,
 }
 
@@ -186,6 +195,7 @@ impl Parameters {
             sps: sps.nal.clone(),
             pps: pps.nal.clone(),
             format,
+            full_range: sps.full_range,
         })
     }
 
@@ -425,6 +435,7 @@ impl Bitstream {
             let configuration = Configuration::Av1 {
                 av1c,
                 format: av1::format_from_sequence(sequence, &sample),
+                full_range: sequence.full_range,
                 reduced_still_picture_header: sequence.reduced_still_picture_header,
             };
             configuration_changed = self.configuration.as_ref() != Some(&configuration);
@@ -465,9 +476,15 @@ fn nal_header(hevc: bool, nal: &[u8]) -> Option<(u8, usize)> {
 fn parameter(hevc: bool, kind: u8, nal: &[u8], header_len: usize) -> Result<(u32, Parameter)> {
     ensure!(nal.len() <= 65536, "parameter NAL too large");
     let rbsp = remove_emulation_prevention(&nal[header_len..]);
+    // AVC and HEVC infer video_full_range_flag = 0 when VUI doesn't signal it.
+    let mut full_range = false;
     let (id, parent_id, format) = match (hevc, kind) {
         (false, 7) => {
             let sps = Sps::parse_complete(&rbsp).context("invalid H.264 SPS")?;
+            full_range = sps
+                .vui
+                .and_then(|vui| vui.video_signal_type)
+                .is_some_and(|signal| signal.video_full_range_flag);
             let format = video_format::parse_h264_sps(nal).context("invalid H.264 SPS format")?;
             (sps.seq_parameter_set_id, 0, Some(format))
         }
@@ -495,6 +512,10 @@ fn parameter(hevc: bool, kind: u8, nal: &[u8], header_len: usize) -> Result<(u32
                         || flags.sps_3d_extension_flag)),
                 BitstreamError::Unsupported("HEVC multilayer or 3D SPS extension")
             );
+            full_range = sps
+                .vui_parameters
+                .and_then(|vui| vui.video_signal_type)
+                .is_some_and(|signal| signal.video_full_range_flag);
             let format = video_format::parse_h265_sps(nal).context("invalid HEVC SPS format")?;
             (sps.sps_id.into(), sps.vps_id.into(), Some(format))
         }
@@ -516,6 +537,7 @@ fn parameter(hevc: bool, kind: u8, nal: &[u8], header_len: usize) -> Result<(u32
             nal: Bytes::copy_from_slice(nal),
             parent_id,
             format,
+            full_range,
             avc_pps_chroma444: None,
         },
     ))
