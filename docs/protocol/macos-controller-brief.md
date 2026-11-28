@@ -10,7 +10,7 @@
 
 不在本文：Mac 被控、无人值守、虚拟屏与驱动、剪贴板、文件传输、拖放、聊天语音与通话、批注、插件、HDR、自动更新。它们在 §0.2 列为后续项，届时另写简报。
 
-- 所有结论来自代码阅读，`文件:行` 对应 2026-11-27 的代码快照（`next@735d69e`）。代码与 `docs/**/*.md` 不一致时以代码为准，差异见 §10。
+- 基线的 `文件:行` 对应 2026-11-27 的代码快照（`next@735d69e`）；本轮 M1 更新的引用对应 `bf70694`。代码与 `docs/**/*.md` 不一致时以代码为准，差异见 §10。
 - 本文写作时没有在 Mac 上构建过本项目（开发机尚未安装 Rust）。标【待测】的结论需要真机验证。
 - 用语：被控 = host；主控 = controller = 本文的 Mac 客户端；“Windows 主控”指现有的 Windows 客户端；“平台层”指 `src/platform/<os>`。
 
@@ -72,7 +72,7 @@
 | 麦克风送往被控 | cpal（`src/media/microphone.rs:481`） | 同上，需要麦克风授权 | 是 |
 | 局域网发现、直连、WOL 唤醒 | `src/transport/direct/**`、`src/features/host/wol` | 共用；网卡与地址变化走平台层；受本地网络权限约束（§8） | M9 |
 | 剪贴板、文件、拖放 | OLE、`src/features/{clipboard,file_transfer,drag_drop}` | `NSPasteboard`、`NSDragging*` | 否 |
-| 聊天文字 | `src/features/chat`、`src/application/app/view/chat` | 共用 | 视 §7.3 |
+| 聊天文字 | `src/features/chat`、`src/application/app/view/chat` | 共用（§7.3） | 是 |
 | 聊天语音与通话 | 依赖 `features::host::peer::chat_video`（§7.3） | — | 否 |
 | 批注、插件、HDR | `windows_presenter/plugin_*.rs` 等 | — | 否 |
 | 远端升级、远程诊断、查看被控摄像头 | 按对端为 Windows 开放（`connection.rs:125`、`:348`，`device_details.rs:513-517`） | 共用，对端是 Windows 时照常可用 | 诊断、摄像头视 M9；升级是 |
@@ -124,7 +124,9 @@ M1 已按代码确认 `src/main.rs` 的命令在 Mac 首版的取舍：
 | 顶层 | `Gui`、`Server`、`Login`、`Logout`、`Id`、`Devices`、`Connect`（含 `--dev-*` 参数）、`Assist`（作为主控）、`Friend`、`Grant`、`Sessions`、`Lan`、`Dev` | `WolConfigure`、`Update`、`Notification`、`Uninstall`、`Service`、`HostResident`、`InputAgent`、`CaptureAgent`、`Component`、`DisplayRecovery`、`PluginVideoHost`、`EncoderProbe`、`DesktopAccess`、`PluginHost`、`Host`、`Trusted` |
 | `Dev` 子命令 | `Ports`、`Power`、`Input`、`Video` | `Plugins`、`Camera`、`Voice`（依赖被控或 Windows 后端）；`Clipboard`、`Files`、`Diagnostics`（不在首版范围内，诊断模块也有被控侧逻辑） |
 
-其中，`Trusted` 整个命令不编入：它操作本机被控端的信任列表，后台服务模式下经 `transport::direct::managed` 访问 Windows 常驻服务。命令定义、分派及 `src/application/mod.rs`、`src/application/cli.rs` 中对应的 Windows 专用入口均用 `#[cfg(windows)]` 隔开。Mac 上库的编译阻断尚未清完，`cargo check` 还未走到 `main.rs` 的类型检查；Windows 行为待 CI 回归验证。
+上表为首版目标。M5 前，`Gui` 和默认启动设备中心只在 Windows 编入；Mac 不带子命令时打印 clap 帮助，退出码为 0（`src/main.rs:631-647`）。M6 前，`Connect`、`Assist` 只在 Windows 编入：包括 `--direct`、`--audio-only`、`--dev-*` 在内的所有路径都会打开观看窗口（`src/main.rs:902-909`、`:1098-1162`）。便携启动器 `application::bootstrap` 与 `--bootstrap-version` 也只在 Windows 编入（`src/application/mod.rs:13-14`、`src/main.rs:29-31`）；语言初始化在两边都执行（`src/main.rs:595`）。
+
+其中，`Trusted` 整个命令不编入：它操作本机被控端的信任列表，后台服务模式下经 `transport::direct::managed` 访问 Windows 常驻服务。命令定义、分派及 `src/application/mod.rs`、`src/application/cli.rs` 中对应的 Windows 专用入口均用 `#[cfg(windows)]` 隔开。Mac 上库的编译阻断尚未清完，`cargo check` 还未走到 `main.rs` 的类型检查；本轮 Windows 构建与库测试已通过（§12）。
 
 ### 1.4 检查
 
@@ -165,7 +167,7 @@ M1 已将下列主控也用到的类型、常量和函数放在共用层；尚�
 | HEVC 负载打包 | `media::hevc::payloads` |
 | WOL 报文 | `features::wol::packet` |
 | WOL 本地唤醒 | `features::host::wol::wake_locally`（待 M9 提供平台网卡后端，见 §8.2） |
-| 聊天画面 | `features::host::peer::chat_video::*`（留待 §7.3） |
+| 聊天画面 | `features::host::peer::chat_video::*`（随语音与通话 `cfg(windows)`，见 §7.3） |
 
 `features::stream_control::publisher*` 是被控一侧的发布逻辑，按做法 B 归入运行时。
 
@@ -186,12 +188,13 @@ M1 已将下列主控也用到的类型、常量和函数放在共用层；尚�
 ### 3.2 能力与特性
 
 - 设备注册能力（`local_capabilities`，`src/account/feature_ability.rs:36-49`）：由已编入的后端生成。Mac 首版为空集合。服务端对空集合按 `normalize_capabilities` 处理（`server/src/http/devices.rs:255`）【待测：空集合注册与刷新的行为】。
-- 主控 HELLO 特性（`controller_features`，`src/protocol/peer.rs:244-259`）：Mac 首版声明 `display.config`、`display.virtual`（请求 Windows 被控改分辨率、建虚拟屏，界面与协议逻辑共用）、`cursor.participants`；不声明 `touch`、`pen`、`clipboard`、`clipboard.files`、`files`；`video.recovery` 等 §5.4 的 V3 通过后再声明，在此之前走现有的 `disable_controller_recovery`（`src/protocol/peer.rs:265-267`）同样的“只用关键帧”路径。M1 已随剪贴板、文件传输的运行时一起，在 Windows 以外去掉 `clipboard`、`clipboard.files`、`files` 的声明（被控 HELLO 同样处理），设备注册也不再宣告 `files`；`touch`、`pen` 与空能力集合仍待后续步骤。
-- 更新查询（`src/account/api/mod.rs:1046-1049`）在 Mac 上不编入。
+- 主控 HELLO 特性（`controller_features`，`src/protocol/peer.rs:244-264`）：保留 `display.config`、`display.virtual`（请求 Windows 被控改分辨率、建虚拟屏，界面与协议逻辑共用）、`cursor.participants`。M1 已在 Windows 以外去掉 `touch`、`pen`（测试 `controller_advertises_native_pointers_only_on_windows`，`src/protocol/peer.rs:394`）以及 `clipboard`、`clipboard.files`、`files`（后三项在被控 HELLO 中也已去掉）。设备注册不再宣告 `files`，其余注册能力清空留给 M2。Mac 首版的 `video.recovery` 等 §5.4 的 V3 通过后再声明，在此之前走现有的 `disable_controller_recovery`（`src/protocol/peer.rs:270-272`）同样的“只用关键帧”路径。
+- Windows 以外由 `HDR_SUPPORTED` 保证不请求 HDR，解码器声明仍按探测结果发送（§5.5）。
+- Mac 首版不查询更新；现有调用随设备中心只在 Windows 编入（`src/application/app/updates.rs:211`）。
 
 ### 3.3 本地数据与日志
 
-- `product::local_data_dir`（`src/product.rs:189-196`）是 profile 目录的唯一来源；直连记录（`src/transport/direct/store.rs:30`）、插件设置、语音设置（`src/features/voice/settings.rs:88`）都经它。Mac 上基准目录为 `~/Library/Application Support/Farwing`（通过 `NSFileManager` 的 `applicationSupportDirectory` 取得），profile 规则不变。
+- `product::local_data_dir`（`src/product.rs:189-196`）是 profile 目录的唯一来源；直连记录（`src/transport/direct/store.rs:30`）、Windows 的插件设置与语音设置（`src/features/voice/settings.rs:111-116`）都经它。Mac 上基准目录为 `~/Library/Application Support/Farwing`（通过 `NSFileManager` 的 `applicationSupportDirectory` 取得），profile 规则不变。
 - 日志：`src/diagnostics/logging/files.rs:20` 要求 `LOCALAPPDATA`，Mac 上用 `~/Library/Logs/Farwing`。诊断包（`src/diagnostics/bundle.rs`）的系统信息部分按平台。
 - `product.rs` 里的 `EXECUTABLE_NAME`、pipe 和内核对象名、`PCWSTR` 包装属于 Windows 平台层；产品名、profile、`keyring_service` 等保持共用。
 
@@ -221,6 +224,8 @@ M1 已将下列主控也用到的类型、常量和函数放在共用层；尚�
 - 与 Windows 绑定的部分：每个窗口的 `UiPresenter`（D3D11 交换链 + DirectComposition）、`create_device`（`src/ui/windows.rs:729`）、`ui/chrome.rs` 的 DWM 与 `WM_NCCALCSIZE`、`ui/tray.rs`、`ui/video_textures.rs`。egui 输出经 `egui_directx11::split_output`（`vendor/egui-directx11/src/lib.rs:83`）拆成 `RendererOutput`（`:69`）交给呈现器。
 
 ### 4.2 Mac 上的做法
+
+M5 前，设备中心界面与窗口宿主（`application::app`、`ui::run` 等）用 `#[cfg(windows)]` 隔开；`ui::{controls, theme, branding}` 仍共用（`src/application/mod.rs:3-5`、`src/ui/mod.rs:4-35`）。
 
 - 事件循环、窗口与输入事件：winit 的 AppKit 后端；`with_msg_hook` 一类 Windows 扩展只在平台层出现。`ui/windows.rs` 拆成通用的多窗口宿主和平台的窗口工厂与呈现器。
 - egui 呈现：保持 `RendererOutput` 这一边界，平台呈现器负责把 egui 网格画进窗口。首版先用能最快跑起来的方案（现成的 egui 后端，或参照 `vendor/egui-directx11` 写一个 Metal 版），在 M8 用数据定型，比较项见 §5.6。
@@ -277,7 +282,7 @@ transport/rtc/receive.rs → transport/video_receiver/*
 - `CVPixelBuffer` 经 `CVMetalTextureCache` 得到各平面的 `MTLTexture`，用 Metal 着色器做 YCbCr → RGB（色彩空间与范围取自 `media::video_color`，对应现在 `platform/windows/video_shader.rs` 的选择逻辑）。
 - 使用期间持有 `CVMetalTexture`，在命令缓冲完成回调里释放；限制在途帧数，确认缓冲区不会在 GPU 用完前被解码器复用（V5【待测】）。
 - 视频层放在 UI 层之下，用 `CAMetalLayer` 叠放，代替现在的子 HWND；`title_bar_height_pixels` 等区域计算沿用。
-- 首版只做 SDR；HDR（EDR、PQ）后续另做。
+- 首版只做 SDR；HDR（EDR、PQ）后续另做。`HDR_SUPPORTED = cfg!(windows)`（`src/features/stream_control/mod.rs:56`）限制流请求，不过滤解码探测结果（`src/session/negotiation.rs:99`）；10 位 SDR 仍可协商（被控用 `bit10` 匹配所有 10 位格式，`src/features/host/format.rs:76`）。
 - 多屏窗口：`windows_presenter/screen_windows.rs` 的“每块远端屏一个窗口”模型照搬，呈现器换成 Metal。
 
 ### 5.6 渲染后端对比（V1，M8）
@@ -291,6 +296,8 @@ transport/rtc/receive.rs → transport/video_receiver/*
 场景：独立播放、叠加菜单与 HUD、多窗口打开关闭、全屏切换。记录显示延迟、`render_interval_p95_ms`、丢帧、CPU 是否回读像素。现成后端能否零拷贝导入 IOSurface（例如经 wgpu 的 hal 层）【待测】。
 
 ## 6. 输入
+
+M6 前，观看窗口的呈现、Windows 输入模块与快捷键只在 Windows 编入（`src/application/viewer/mod.rs:37-62`、`src/application/mod.rs:16-17`）；主控连接、解码管线与呈现队列，以及无窗口的 `dev video`、`dev input` 仍编入。
 
 ### 6.1 现状
 
@@ -339,16 +346,13 @@ transport/rtc/receive.rs → transport/video_receiver/*
 ### 7.2 麦克风
 
 - `src/media/microphone.rs:481` 同样用 cpal。Mac 上首次打开麦克风会触发系统授权，`Info.plist` 需要 `NSMicrophoneUsageDescription`。拒绝时只禁用麦克风，观看照常。
-- `src/features/voice/engine.rs:164` 写死 `cpal::HostId::Wasapi` 构造设备 ID，改为按平台取 host。
+- 聊天语音的 `cpal::HostId::Wasapi`（`src/features/voice/engine.rs:164`）不在本节的麦克风路径上，随聊天语音只在 Windows 编入（§7.3）。
 
 ### 7.3 聊天语音与通话
 
-`features::voice` 依赖 `features::host::peer::chat_video`（`src/features/voice/session.rs:7`、`:131`、`:187-190`、`:304`、`:716`，`src/features/chat/voice_link.rs:87`、`:577-578`），后者在签名里带 D3D11 类型。首版的两种做法：
+M1 已将 `features::voice` 运行时、`features::chat` 的通话分支（含 `voice_link`）及依赖 D3D11 的 `features::host::peer::chat_video` 限在 Windows（`src/features/voice/mod.rs:3-16`、`src/features/chat/mod.rs:9-10`、`src/features/host/peer/mod.rs:1169-1170`）。聊天文字与语音设置的数据格式（`VoiceSettings`、`Mode`、`Key`、`Noise`、`SoundGroup`）仍共用；`voice-settings.json` 只在 Windows 读写（`src/features/voice/settings.rs:111-151`）。设备注册与 HELLO 原本不宣告语音，无需改动。
 
-- 拆出 `chat_video` 中与平台无关的类型（`Quality`、`Shown`、`Layout`），语音和通话整体在 Mac 上不编入，聊天文字保留；
-- 或者聊天整体不编入。
-
-M5 时按实际依赖确定，写回本节。
+Mac 收到 Windows 对端的 `VOICE_STATE` / `CALL_*` 推送时走现有的 `_ => {}`（`src/features/chat/state.rs:522`）；来电只在呼叫方响铃，无人接听，未接来电仍通过共用的消息预览显示（`src/features/chat/state.rs:547-551`）。
 
 ## 8. 网络与权限
 
@@ -448,7 +452,7 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 | M2 | 命令行登录：§3 的平台身份、空能力集合、硬件信息、数据与日志目录、Keychain；`Server`、`Login`、`Devices`、`Friend`、`Grant`、`Sessions` | 签名 `.app` 内的二进制能设置服务器、登录、列设备；Windows 主控的设备列表里这台 Mac 显示为 macOS、不可连接；登出后 Keychain 清理 |
 | M3 | 无窗口解码：§5.2–§5.4（A1–A3、VT 解码器、能力探测、软件槽）；`dev video` | Mac `dev video` 连 Windows 被控：H.264、HEVC（及硬件支持时的 AV1）持续解码，统计与 Windows 主控同量级；V3 结果写回 §5.4 |
 | M4 | 无窗口输入：§6.2（HID 判断移到共用层、计时器）；`dev input` | Mac `dev input` 向 Windows 被控发送脚本键鼠，被控收到的键与 Windows 主控发送的一致 |
-| M5 | 设备中心窗口：§3.5–§3.6、§4（事件循环、egui 呈现、标题栏、菜单、托盘、字体、语言、单实例）；§7.3 定下聊天取舍 | 从 Finder 启动，GUI 登录、设备列表、好友、授权、设置页可用；第二次启动激活第一个实例；托盘菜单可用 |
+| M5 | 设备中心窗口：§3.5–§3.6、§4（事件循环、egui 呈现、标题栏、菜单、托盘、字体、语言、单实例）；§7.3 接回文字聊天 | 从 Finder 启动，GUI 登录、设备列表、好友、授权、设置页可用；第二次启动激活第一个实例；托盘菜单可用 |
 | M6 | 观看窗口：§5.5（视频层、渲染线程、多屏窗口、全屏）、§6.3–§6.5（键盘、鼠标、光标、快捷键）；断线重连 | Mac → Windows：H.264 SDR 1080p60 可看可控；左右修饰键、CapsLock、失焦与断线后按键释放；Cmd/Ctrl 映射与系统命令菜单；相对鼠标；性能门槛见下 |
 | M7 | 声音与麦克风：§7.1–§7.2 | 被控声音播放、音画同步；麦克风送往被控（被控装有虚拟声卡时）；拒绝麦克风授权时观看不受影响 |
 | M8 | 渲染后端对比（§5.6）并定型 | 对比数据写回 §5.6；保留一条路径，删掉另一条 |
@@ -463,5 +467,5 @@ FARWING_TEST_SIGN_IDENTITY="$SIGN_ID" /usr/bin/python3 packaging/macos/test_buil
 | 步 | 状态 |
 |---|---|
 | M0 | 包装脚本、测试和开发分支 CI 已配置；本机 Apple Development 签名、严格验签、标识符和证书核对通过。开发机已有 Xcode 命令行工具，Rust 1.95.0 装在仓库外的隔离目录；未实际运行 GitHub workflow，权限判别待验（§8.3）。 |
-| M1 | Mac 侧已完成 §1.1–§1.2 构建层、§2.3 共享项迁移及 §1.3 命令取舍；build script 通过，`cargo check` 仍停在 `farwing` 库的 Rust 代码。首版范围外的剪贴板、文件传输、拖放、插件已在 Windows 以外不编入（Mac 检查剩 889 个错误）。以上各项在 Windows CI（`windows-2025`）上的构建与库测试均已通过（见 `docs/selftest-results.md`）；§2.1–§2.2 被控运行时解耦、`platform/macos` 目录及其余阻断尚未开始。 |
+| M1 | §1.1–§1.2 构建层、§2.3 共享项迁移及 §1.3 命令取舍已完成。剪贴板、文件传输、拖放、插件、语音与通话、Windows 观看窗口及输入、设备中心和启动器均按平台编入；Mac 不声明 `touch`、`pen`，不请求 HDR。`cargo check` 仍停在 `farwing` 库，本机与 CI 均剩 265 个错误；本轮 Windows CI 构建与库测试通过（见 `docs/selftest-results.md`）。§2.1–§2.2 被控运行时拆分待与上游对齐，`src/platform/macos/` 尚未建立；其余阻断分属 M2 身份与存储、M3 解码与显示探测、M4 输入、M5 单实例与语言，以及 M9 网络等。 |
 | M2–M9 | 未开始 |

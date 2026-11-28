@@ -1952,3 +1952,45 @@ done
 | fork CI `macos-check.yml`（`macos-15` arm64） | 失败，889 个错误、1 个 warning，与本机一致 |
 
 macOS 一侧另有 `controller_omits_clipboard_and_files_without_backends`，要等库能编译后才能运行。库在名字解析阶段就失败，类型检查和 lint 都还没走到；本次另做了静态核对：被 gate 掉的函数在 Mac 上没有残留的调用方，也不会留下未使用项。`docs/manual-test-checklist.md` 的条目没有做；这一步只加了 `#[cfg(windows)]`，Windows 上的行为不变。
+
+## macOS 主控：M1 语音、观看窗口、设备中心与 HDR 按平台编入之后的检查（2026-11-28）
+
+**结果：Windows 回归通过；本机与 CI 的 macOS 检查均剩 265 个错误，比上一节少 624 个。** 测试提交 `bf70694`，对照 `9181ab2`，共四步：
+
+- `2ae50e5`：语音与通话（含 `chat_video`、`VideoTrack::named`）只在 Windows 编入，文字聊天、历史通话的文字预览与语音设置格式仍共用。`voice-settings.json` 读写和 `hkdf`、`x25519-dalek`、`nnnoiseless` 依赖限于 Windows，`Cargo.lock` 不变。设备注册和 HELLO 原本不宣告语音。
+- `a8db22c`：Windows 观看窗口的呈现、输入钩子、快捷键及 `connect`、`assist` 入口按平台编入；`ViewerTarget` 移到 `src/session/controller/viewing.rs:198`。主控连接、解码管线、呈现队列及无窗口的 `dev video`、`dev input` 仍编入。主控 HELLO 在 Windows 以外不再声明 `touch`、`pen`。
+- `809f6c4`：设备中心及 `gui` 命令只在 Windows 编入；macOS 无子命令时打印帮助、退出码为 0（静态核对，`src/main.rs:631-647`）。`ui::{controls, theme, branding}` 仍编入，`cap_label` 移到 `src/i18n/mod.rs:222`。
+- `bf70694`：便携启动器与 `--bootstrap-version` 只在 Windows 编入，语言初始化移到 `main`（`src/main.rs:595`）。Windows 以外屏蔽已保存的 HDR 偏好、只请求 SDR、隐藏 HDR 开关、显式打开时报原有的“不支持”提示；解码器声明不变，10 位 SDR 仍可协商（简报 §5.5）。
+
+本机为 Apple Silicon、macOS 15.6、SDK 15.5。在工作树根目录用隔离 wrapper 执行：
+
+```sh
+run=/Volumes/OUTSIDE/dev-tools/farwing/run
+logs=/Volumes/OUTSIDE/dev-tools/farwing/tmp
+"$run" cargo +1.95.0 check --locked --target aarch64-apple-darwin --message-format short >"$logs/m1-final.log" 2>&1
+```
+
+| 检查 | 结果 |
+|---|---|
+| 本机 `cargo check --locked --target aarch64-apple-darwin`（Rust 1.95.0） | 889 → 810 → 625 → 270 → 265 个错误，后两步无新增报错位置；最终仍只有 1 个既有 warning（`src/features/host/mod.rs:31` 未使用的 `HostSettings` 导入） |
+| fork CI `windows-check.yml`（`windows-2025`，[46087824481](https://github.com/jiege6-66/farwing-macos/actions/runs/46087824481)） | `cargo build --release --locked` 成功（16 分 23 秒），构建无 warning；`cargo fast-test --locked --lib`（编译 13 分 21 秒）288 项中 286 项通过、0 项失败、2 项 ignored。新增的 `controller_advertises_native_pointers_only_on_windows`、`wanted_stream_only_requests_hdr_on_windows`、`saved_hdr_preference_respects_platform_policy` 均通过 |
+| fork CI `macos-check.yml`（`macos-15` arm64，[46087824409](https://github.com/jiege6-66/farwing-macos/actions/runs/46087824409)） | `cargo check --locked --target aarch64-apple-darwin` 按预期失败，265 个错误、1 个 warning，报错位置与本机一致 |
+
+前两步新增的界面报错随设备中心不再编入而消失；仍保留的新增位置是既有 Windows 导入失败后露出的连带报错，如 `src/account/client/publication.rs:127` 和 `src/diagnostics/logging/files.rs:56`。两次 CI 均由推送 `bf70694` 触发；日志分别在 `$logs/ci-win/windows-x64-regression/`、`$logs/ci-mac/`。
+
+`farwing`（lib）的剩余错误按简报章节归类，每条只计一次，包含连带报错。本机短格式为 264 条；CI 完整日志在 `src/account/client/publication.rs:127:45` 有两条 `E0277`，短格式只显示一条，下表按汇总的 265 条计。
+
+| 简报章节 | 阻断 | 条数 | 代表位置 |
+|---|---|---:|---|
+| §2.1–§2.2 | 被控采集、编码、输入等运行时与后台服务仍未解耦 | 180 | `src/features/host/mod.rs:130`、`src/session/presence.rs:74` |
+| §3.1–§3.4（M2） | 硬件身份、数据目录、日志与诊断、凭据 vault 和登录密码输入仍依赖 Windows | 45 | `src/account/auth/mod.rs:281`、`src/product.rs:183`、`src/diagnostics/logging/files.rs:51`、`src/account/auth/secret.rs:2`、`src/account/login/mod.rs:110` |
+| §3.5 | presence 与软件解码槽依赖 named mutex（软件槽 A3 计在此处） | 5 | `src/session/presence.rs:140`、`src/media/decoder/software_slot.rs:7` |
+| §3.6 | 系统语言调用 Win32 | 1 | `src/i18n/mod.rs:113` |
+| §4.2、§5.2 | 共用主控路径仍从 Windows 探测本机显示参数 | 1 | `src/media/mod.rs:26` |
+| §5.2–§5.4（M3） | 解码后端、GPU 句柄、surface、适配器探测与诊断仍绑定 Windows | 18 | `src/media/decode_api/video.rs:6`、`src/media/decoder_pool.rs:34`、`src/media/selection.rs:104` |
+| §6.2（M4） | HID 判断、脚本输入和按键计时仍依赖 Windows | 4 | `src/features/remote_input.rs:15`、`src/features/remote_input.rs:309`、`src/application/dev_input.rs:9` |
+| §8.2（M9） | 局域网地址、路由、网络变化、唤醒与 WOL 仍依赖 Windows | 11 | `src/transport/direct/lan.rs:133`、`src/transport/nat/route.rs:16`、`src/transport/signal/mod.rs:835`、`src/features/host/wol.rs:4` |
+
+`docs/manual-test-checklist.md` 的条目没有做；Windows 只回归了构建与库测试，没有界面或运行时行为变更。macOS 还未检查到 bin，`src/main.rs` 仅静态核对；本轮三项新增测试（`peer.rs`、`settings.rs`）也要等库能编译后才能在 macOS 运行。
+
+库通过检查后，仅由 Windows 专属代码使用的共用项会报 `dead_code`，如 `src/session/controller/viewing.rs:216` 的 `run_viewer_connection_owner`、`:696` 的 `present_video`，`src/session/controller/direct.rs:84` 的 `run_owner`，以及 `src/application/viewer/hud.rs:8` 的 `show_performance_overlay`、`stream_menu`、`src/ui/branding.rs` 的 `Art` / `paint` / `icon` / `source`、`src/ui/controls.rs:571` 的 `viewer_caption_separator` 和文字聊天服务与渲染。留到 M1 收尾，或由 M5–M6 的调用方接回。§2.2 的被控拆分仍待与上游讨论。
