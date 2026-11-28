@@ -64,7 +64,7 @@ impl Language {
     }
 }
 
-/// What the user chose in Settings; `System` follows Windows.
+/// What the user chose in Settings; `System` follows the OS language.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Choice {
@@ -107,12 +107,19 @@ pub(crate) fn set(language: Language) {
     );
 }
 
-/// Windows' display language: Chinese reads 简体中文, anything else English.
+#[cfg(windows)]
+pub(crate) use crate::platform::windows::locale::system_language;
+
+#[cfg(target_os = "macos")]
 pub(crate) fn system_language() -> Language {
-    // SAFETY: no arguments; returns the user's UI language ID.
-    let id = unsafe { windows::Win32::Globalization::GetUserDefaultUILanguage() };
-    const LANG_CHINESE: u16 = 0x04;
-    if id & 0x3ff == LANG_CHINESE {
+    language_for_system_tag(crate::platform::macos::locale::preferred_language().as_deref())
+}
+
+/// All Chinese variants use 简体中文, and English is the fallback.
+#[cfg(any(target_os = "macos", test))]
+fn language_for_system_tag(tag: Option<&str>) -> Language {
+    let tag = tag.unwrap_or_default().trim().to_ascii_lowercase();
+    if tag.split(['-', '_']).next() == Some("zh") {
         Language::ZhCn
     } else {
         Language::En
@@ -151,7 +158,7 @@ pub(crate) fn choose(choice: Choice) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// At process start: the saved choice, or Windows' language.
+/// At process start: the saved choice, or the OS language.
 pub fn init() {
     set(choice().language());
 }
@@ -260,6 +267,24 @@ mod tests {
         assert_eq!(Language::from_tag("zh-TW"), Some(Language::ZhCn));
         assert_eq!(Language::from_tag("en-GB"), Some(Language::En));
         assert_eq!(Language::from_tag("fr"), None);
+    }
+
+    #[test]
+    fn system_language_follows_preferred_tag() {
+        for tag in [
+            "zh-Hans-CN",
+            "zh-Hant-TW",
+            "zh",
+            "ZH-CN",
+            "  zh-Hans  ",
+            "zh_CN",
+        ] {
+            assert_eq!(language_for_system_tag(Some(tag)), Language::ZhCn, "{tag}");
+        }
+        for tag in ["en-US", "fr-FR", "", "zha"] {
+            assert_eq!(language_for_system_tag(Some(tag)), Language::En, "{tag}");
+        }
+        assert_eq!(language_for_system_tag(None), Language::En);
     }
 
     #[test]

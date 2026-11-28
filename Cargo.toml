@@ -167,7 +167,7 @@ windows = { version = "0.62.2", default-features = false, features = [
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSFileManager", "NSPathUtilities", "NSURL"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSFileManager", "NSLocale", "NSPathUtilities", "NSString", "NSURL"] }
 
 [patch.crates-io]
 dtls = { path = "vendor/dtls" }
