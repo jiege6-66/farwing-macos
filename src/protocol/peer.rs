@@ -257,22 +257,30 @@ pub(crate) fn controller_features() -> BTreeMap<String, u32> {
         feature::FILES,
         feature::CURSOR_PARTICIPANTS,
     ]);
-    if !RECOVERY_DISABLED.load(std::sync::atomic::Ordering::Relaxed) {
+    if controller_recovery() {
         features.insert(feature::VIDEO_RECOVERY.to_owned(), 1);
     }
     features
 }
 
-static RECOVERY_DISABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+// Keep the macOS default off until V3 passes (macos-controller-brief.md §0.3).
+static RECOVERY_DECLARED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(!cfg!(target_os = "macos"));
+
+/// `dev video --recovery`: opt in to declaring `video.recovery` on macOS.
+#[cfg(target_os = "macos")]
+pub(crate) fn enable_controller_recovery() {
+    RECOVERY_DECLARED.store(true, std::sync::atomic::Ordering::Relaxed);
+}
 
 /// `dev video --no-recovery`: this controller does not declare
 /// `video.recovery` (keyframes only), for A/B measurements.
 pub(crate) fn disable_controller_recovery() {
-    RECOVERY_DISABLED.store(true, std::sync::atomic::Ordering::Relaxed);
+    RECOVERY_DECLARED.store(false, std::sync::atomic::Ordering::Relaxed);
 }
 
 pub(crate) fn controller_recovery() -> bool {
-    !RECOVERY_DISABLED.load(std::sync::atomic::Ordering::Relaxed)
+    RECOVERY_DECLARED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// Features implemented by the host. `touch` and `pen` only where Windows
@@ -382,6 +390,23 @@ pub(crate) fn decode_hello(bytes: &[u8]) -> Result<Option<ReceivedHello>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn controller_recovery_is_opt_in() {
+        assert!(!controller_features().contains_key(feature::VIDEO_RECOVERY));
+        enable_controller_recovery();
+        let enabled = controller_features();
+        disable_controller_recovery();
+        assert_eq!(enabled.get(feature::VIDEO_RECOVERY), Some(&1));
+        assert!(!controller_features().contains_key(feature::VIDEO_RECOVERY));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn controller_advertises_recovery_by_default() {
+        assert_eq!(controller_features().get(feature::VIDEO_RECOVERY), Some(&1));
+    }
 
     #[cfg(not(windows))]
     #[test]

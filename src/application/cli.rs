@@ -841,11 +841,6 @@ pub async fn dev_diagnostics(
     result
 }
 
-/// `dev video`: decode the host's first screen for `seconds` without a
-/// window, optionally under injected loss and delay (`--loss`, see
-/// `transport::rtc::impair`), and print the recovery report as JSON
-/// (`docs/protocol/rfi-ltr-brief.md` §6.10).
-/// `dev video --no-recovery`: keyframes only, for A/B runs.
 /// `connect --dev-loss`: the `dev video --loss` rules for a viewer window.
 #[cfg(windows)]
 pub fn dev_impair(spec: &str) -> Result<()> {
@@ -894,8 +889,15 @@ pub fn dev_quality(quality: &str) -> Result<()> {
     Ok(())
 }
 
+/// `dev video --no-recovery`: keyframes only, for A/B runs (the macOS default).
 pub fn dev_video_without_recovery() {
     crate::protocol::peer::disable_controller_recovery();
+}
+
+/// `dev video --recovery`: opt in to recovery on macOS for V3 testing.
+#[cfg(target_os = "macos")]
+pub fn dev_video_with_recovery() {
+    crate::protocol::peer::enable_controller_recovery();
 }
 
 #[cfg(windows)]
@@ -929,6 +931,10 @@ pub fn dev_video_late_recovery() {
     crate::transport::rtc::recovery::disable_early();
 }
 
+/// `dev video`: decode the host's first screen for `seconds` without a
+/// window, optionally under injected loss and delay (`--loss`, see
+/// `transport::rtc::impair`), and print the recovery report as JSON
+/// (`docs/protocol/rfi-ltr-brief.md` §6.10).
 pub async fn dev_video(
     device_id: &str,
     seconds: u64,

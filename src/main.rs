@@ -433,6 +433,10 @@ enum DevAction {
         watch: bool,
     },
     /// 无窗口解码被控主屏，可注入丢包与延迟，输出恢复时长等 JSON 指标
+    #[cfg_attr(
+        target_os = "macos",
+        doc = "macOS 默认不声明 video.recovery；可用 --recovery 开启。"
+    )]
     Video {
         #[arg(long)]
         device_id: String,
@@ -448,8 +452,13 @@ enum DevAction {
         #[arg(long)]
         codec: Option<media::CodecPreference>,
         /// 不声明 video.recovery：丢包后只用关键帧恢复（A/B 对照）
+        #[cfg_attr(target_os = "macos", doc = "这是 macOS 的默认行为。")]
         #[arg(long)]
         no_recovery: bool,
+        /// 声明 video.recovery，供 V3 实测
+        #[cfg(target_os = "macos")]
+        #[arg(long, conflicts_with = "no_recovery")]
+        recovery: bool,
         /// 恢复帧与关键帧一样等到“修不好”才请求（不提前判定，A/B 对照）
         #[arg(long)]
         recovery_late: bool,
@@ -982,6 +991,8 @@ fn main() -> Result<()> {
                     software,
                     codec,
                     no_recovery,
+                    #[cfg(target_os = "macos")]
+                    recovery,
                     recovery_late,
                     fps,
                     camera,
@@ -998,6 +1009,10 @@ fn main() -> Result<()> {
                     }
                     if no_recovery {
                         farwing::application::cli::dev_video_without_recovery();
+                    }
+                    #[cfg(target_os = "macos")]
+                    if recovery {
+                        farwing::application::cli::dev_video_with_recovery();
                     }
                     if recovery_late {
                         farwing::application::cli::dev_video_late_recovery();
@@ -1257,4 +1272,33 @@ fn print_device(index: Option<usize>, device: &api::DeviceInfo) {
         },
         device.participant_count()
     );
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+    use clap::error::ErrorKind;
+
+    #[test]
+    fn dev_video_accepts_either_recovery_flag() {
+        for flag in ["--recovery", "--no-recovery"] {
+            let args = ["Farwing", "dev", "video", "--device-id", "host", flag];
+            assert!(Cli::try_parse_from(args).is_ok(), "{flag}");
+        }
+    }
+
+    #[test]
+    fn dev_video_recovery_flags_conflict() {
+        let args = [
+            "Farwing",
+            "dev",
+            "video",
+            "--device-id",
+            "host",
+            "--recovery",
+            "--no-recovery",
+        ];
+        let error = Cli::try_parse_from(args).err().unwrap();
+        assert_eq!(error.kind(), ErrorKind::ArgumentConflict);
+    }
 }
